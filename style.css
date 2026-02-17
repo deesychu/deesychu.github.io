@@ -18,27 +18,38 @@ h2 {
     margin-bottom: 40px;
 }
 
-h3 {
-  text-align: center;
+.home-page h3 {
+    color: #FF69B4;      
+    text-align: left;    
+}
+
+h4 {
+    color: #666;
+    font-weight: normal;
+    margin-bottom: 40px;
 }
 
 .chart-section {
-  background-color: white;
-  border-radius: 15px;
-  padding: 30px;
-  margin-bottom: 30px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    background-color: white;
+    border-radius: 15px;
+    padding: 30px;
+    margin-bottom: 30px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 #bar-chart-container,
 #dot-plot-container,
-#heatmap-container, img {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin: 20px auto;
+#heatmap-container, 
+#histogram-container, 
+#box-plot-container, 
+#strip-plot-container,
+img {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 20px auto;
 }
 
 canvas {
-  display: block;
+    display: block;
 }
