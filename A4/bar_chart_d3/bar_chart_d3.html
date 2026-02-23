@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Bar Chart in D3</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        body {
+        font-family: Georgia, serif;
+        background-color: #fff0f5;
+        color: #5a2a3a;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 40px 20px;
+        }
+
+        h1 {
+        font-size: 1.6rem;
+        margin-bottom: 8px;
+        color: #c2185b;
+        }
+
+        p.subtitle {
+        font-size: 0.95rem;
+        color: #a0566b;
+        margin-bottom: 32px;
+        }
+
+        #chart {
+        background: #fff;
+        border: 1.5px solid #f8bbd0;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 16px rgba(194, 24, 91, 0.08);
+        }
+
+        .tick text {
+        fill: #7b3a52;
+        font-size: 0.78rem;
+        font-family: Georgia, serif;
+        }
+
+        .tick line {
+        stroke: #f8bbd0;
+        }
+
+        .domain {
+        stroke: #f8bbd0;
+        }
+
+        .axis-label {
+        fill: #a0566b;
+        font-size: 0.85rem;
+        font-family: Georgia, serif;
+        }
+
+        .divider {
+        stroke: #c2185b;
+        stroke-width: 1.5;
+        stroke-dasharray: 4 3;
+        }
+    </style>
+    </head>
+    <body>
+
+    <h1>Highest & Lowest Rated Skincare Brands on Sephora</h1>
+    <p class="subtitle">D3 Bar Chart - Top 10 and bottom 10 brands by average rating</p>
+    <div id="chart"></div>
+
+    <!-- Reference: https://observablehq.com/@d3/horizontal-bar-chart/2 -->
+    <script>
+        const barHeight = 28;
+        const marginTop = 40;
+        const marginRight = 80;
+        const marginBottom = 30;
+        const marginLeft = 160;
+        const width = 928;
+
+        d3.csv("/A4/data/reviews_0-250.csv").then(data => {
+
+        // Aggregate average rating per brand (200+ reviews only)
+        const brandGroups = d3.rollup(
+            data.filter(d => d.brand_name && d.rating),
+            v => ({ avg: d3.mean(v, d => +d.rating), count: v.length }),
+            d => d.brand_name
+        );
+
+        const allBrands = Array.from(brandGroups, ([brand, { avg, count }]) => ({ brand, avg, count }))
+            .filter(d => d.count >= 200)
+            .sort((a, b) => a.avg - b.avg);
+
+        // Bottom 10 (lowest) and top 10 (highest), ordered so highest is at top
+        const bottom10 = allBrands.slice(0, 10).reverse();
+        const top10 = allBrands.slice(-10).reverse();
+        const chartData = [...top10, ...bottom10];
+
+        const height = Math.ceil((chartData.length + 0.1) * barHeight) + marginTop + marginBottom;
+
+        // x = rating, y = brand name
+        const x = d3.scaleLinear()
+            .domain([0, 5])
+            .range([marginLeft, width - marginRight]);
+
+        const y = d3.scaleBand()
+            .domain(chartData.map(d => d.brand))
+            .rangeRound([marginTop, height - marginBottom])
+            .padding(0.15);
+
+        const svg = d3.create("svg")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("viewBox", [0, 0, width, height])
+            .attr("style", "max-width: 100%; height: auto;");
+
+        // Bars — top 10 soft pink, bottom 10 deep pink
+        svg.append("g")
+            .selectAll("rect")
+            .data(chartData)
+            .join("rect")
+            .attr("fill", (d, i) => i < 10 ? "#f48fb1" : "#c2185b")
+            .attr("x", x(0))
+            .attr("y", d => y(d.brand))
+            .attr("width", d => x(d.avg) - x(0))
+            .attr("height", y.bandwidth());
+
+        // Data labels — inside bar if wide enough, outside if short
+        svg.append("g")
+            .attr("font-family", "Georgia, serif")
+            .attr("font-size", "0.75rem")
+            .selectAll("text")
+            .data(chartData)
+            .join("text")
+            .attr("x", d => x(d.avg))
+            .attr("y", d => y(d.brand) + y.bandwidth() / 2)
+            .attr("dy", "0.35em")
+            .attr("dx", d => x(d.avg) - x(0) > 40 ? -6 : 6)
+            .attr("text-anchor", d => x(d.avg) - x(0) > 40 ? "end" : "start")
+            .attr("fill", d => x(d.avg) - x(0) > 40 ? "white" : "#7b3a52")
+            .text(d => d.avg.toFixed(2));
+
+        // Dashed divider between top 10 and bottom 10
+        const dividerY = y(bottom10[0].brand) - y.step() * 0.5 + y.step() * 0.05;
+        svg.append("line")
+            .attr("class", "divider")
+            .attr("x1", marginLeft)
+            .attr("x2", width - marginRight)
+            .attr("y1", dividerY)
+            .attr("y2", dividerY);
+
+        // Divider labels
+        svg.append("text")
+            .attr("class", "axis-label")
+            .attr("x", width - marginRight + 8)
+            .attr("y", dividerY - 10)
+            .attr("fill", "#c2185b")
+            .attr("font-size", "0.78rem")
+            .text("Top 10 ↑");
+
+        svg.append("text")
+            .attr("class", "axis-label")
+            .attr("x", width - marginRight + 8)
+            .attr("y", dividerY + 16)
+            .attr("fill", "#c2185b")
+            .attr("font-size", "0.78rem")
+            .text("Bottom 10 ↓");
+
+        // Tooltip div
+        const tooltip = d3.select("body").append("div")
+            .style("position", "absolute")
+            .style("background", "#fff")
+            .style("border", "1.5px solid #f8bbd0")
+            .style("border-radius", "8px")
+            .style("padding", "8px 12px")
+            .style("font-family", "Georgia, serif")
+            .style("font-size", "0.8rem")
+            .style("color", "#5a2a3a")
+            .style("box-shadow", "0 4px 12px rgba(194,24,91,0.1)")
+            .style("pointer-events", "none")
+            .style("opacity", 0);
+
+        // Bars — top 10 soft pink, bottom 10 deep pink
+        svg.append("g")
+            .selectAll("rect")
+            .data(chartData)
+            .join("rect")
+            .attr("fill", (d, i) => i < 10 ? "#f48fb1" : "#c2185b")
+            .attr("x", x(0))
+            .attr("y", d => y(d.brand))
+            .attr("width", d => x(d.avg) - x(0))
+            .attr("height", y.bandwidth())
+            .style("cursor", "pointer")
+            .on("mouseover", (event, d) => {
+                tooltip.style("opacity", 1)
+                    .html(`<strong>${d.brand}</strong><br/>Avg Rating: ${d.avg.toFixed(2)}<br/>Reviews: ${d.count.toLocaleString()}`);
+            })
+            .on("mousemove", (event) => {
+                tooltip
+                    .style("left", (event.pageX + 14) + "px")
+                    .style("top", (event.pageY - 28) + "px");
+            })
+            .on("mouseout", () => {
+                tooltip.style("opacity", 0);
+            });
+
+        // Data labels — inside bar if wide enough, outside if short
+        svg.append("g")
+            .attr("font-family", "Georgia, serif")
+            .attr("font-size", "0.75rem")
+            .selectAll("text")
+            .data(chartData)
+            .join("text")
+            .attr("x", d => x(d.avg))
+            .attr("y", d => y(d.brand) + y.bandwidth() / 2)
+            .attr("dy", "0.35em")
+            .attr("dx", d => x(d.avg) - x(0) > 40 ? -6 : 6)
+            .attr("text-anchor", d => x(d.avg) - x(0) > 40 ? "end" : "start")
+            .attr("fill", d => x(d.avg) - x(0) > 40 ? "white" : "#7b3a52")
+            .text(d => d.avg.toFixed(2));
+
+        // X-axis on top with float ticks
+        svg.append("g")
+            .attr("transform", `translate(0,${marginTop})`)
+            .call(d3.axisTop(x).ticks(5).tickFormat(d3.format(".1f")))
+            .call(g => g.select(".domain").remove());
+
+        // X-axis label
+        svg.append("text")
+            .attr("class", "axis-label")
+            .attr("x", (width - marginLeft - marginRight) / 2 + marginLeft)
+            .attr("y", 14)
+            .attr("text-anchor", "middle")
+            .text("Average Rating (1.0 - 5.0)");
+
+        // Y-axis (brand names)
+        svg.append("g")
+            .attr("transform", `translate(${marginLeft},0)`)
+            .call(d3.axisLeft(y).tickSizeOuter(0));
+
+        document.getElementById("chart").appendChild(svg.node());
+        });
+    </script>
+
+    <hr>
+    <a href="/index.html">Go back to homepage</a>
+
+</body>
+</html>

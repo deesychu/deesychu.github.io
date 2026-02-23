@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Scatter Plot in D3</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        body {
+        font-family: Georgia, serif;
+        background-color: #fff0f5;
+        color: #5a2a3a;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 40px 20px;
+        }
+
+        h1 {
+        font-size: 1.6rem;
+        margin-bottom: 8px;
+        color: #c2185b;
+        }
+
+        p.subtitle {
+        font-size: 0.95rem;
+        color: #a0566b;
+        margin-bottom: 32px;
+        }
+
+        #chart {
+        background: #fff;
+        border: 1.5px solid #f8bbd0;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 16px rgba(194, 24, 91, 0.08);
+        }
+
+        .tick text {
+        fill: #7b3a52;
+        font-size: 0.78rem;
+        font-family: Georgia, serif;
+        }
+
+        .tick line {
+        stroke: #f8bbd0;
+        }
+
+        .domain {
+        stroke: #f8bbd0;
+        }
+
+        .axis-label {
+        fill: #a0566b;
+        font-size: 0.85rem;
+        font-family: Georgia, serif;
+        }
+
+        .legend-text {
+        font-family: Georgia, serif;
+        font-size: 0.78rem;
+        fill: #5a2a3a;
+        }
+    </style>
+    </head>
+    <body>
+
+    <h1>Average Price and Budgets on Sephora Products</h1>
+    <p class="subtitle">D3 Scatter Plot - shaped and colored by price tier.</p>
+    <div id="chart"></div>
+
+    <!-- Reference: https://observablehq.com/@d3/scatterplot-with-shapes -->
+    
+    <script>
+        const width = 928;
+        const height = 600;
+        const marginTop = 30;
+        const marginRight = 30;
+        const marginBottom = 50;
+        const marginLeft = 60;
+
+        // Price tier classifier
+        function priceTier(price) {
+        if (price < 30)  return "Budget (Under $30)";
+        if (price < 70)  return "Mid-Range ($30–$69)";
+        if (price < 150) return "Premium ($70–$149)";
+        return "Luxury ($150+)";
+        }
+
+        const tiers = ["Budget (Under $30)", "Mid-Range ($30–$69)", "Premium ($70–$149)", "Luxury ($150+)"];
+
+        // One color and one shape per tier
+        const color = d3.scaleOrdinal()
+        .domain(tiers)
+        .range(["#f48fb1", "#e91e8c", "#c2185b", "#880e4f"]);
+
+        const shape = d3.scaleOrdinal()
+        .domain(tiers)
+        .range(d3.symbols.map(s => d3.symbol().type(s).size(80)()));
+
+        // Tooltip
+        const tooltip = d3.select("body").append("div")
+        .style("position", "absolute")
+        .style("background", "#fff")
+        .style("border", "1.5px solid #f8bbd0")
+        .style("border-radius", "8px")
+        .style("padding", "8px 12px")
+        .style("font-family", "Georgia, serif")
+        .style("font-size", "0.8rem")
+        .style("color", "#5a2a3a")
+        .style("box-shadow", "0 4px 12px rgba(194,24,91,0.1)")
+        .style("pointer-events", "none")
+        .style("opacity", 0);
+
+        d3.csv("/A4/data/reviews_0-250.csv").then(rawData => {
+
+        // Aggregate by brand
+        const brandMap = d3.rollup(
+            rawData.filter(d => d.brand_name && d.price_usd && d.rating),
+            v => ({
+            avgPrice:  d3.mean(v, d => +d.price_usd),
+            avgRating: d3.mean(v, d => +d.rating),
+            count:     v.length
+            }),
+            d => d.brand_name
+        );
+
+        const data = Array.from(brandMap, ([brand, vals]) => ({
+            brand,
+            ...vals,
+            tier: priceTier(vals.avgPrice)
+        })).filter(d => d.count >= 100);
+
+        const x = d3.scaleLinear()
+            .domain(d3.extent(data, d => d.avgPrice)).nice()
+            .range([marginLeft, width - marginRight]);
+
+        const y = d3.scaleLinear()
+            .domain(d3.extent(data, d => d.avgRating)).nice()
+            .range([height - marginBottom, marginTop]);
+
+        const svg = d3.create("svg")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("viewBox", [0, 0, width, height])
+            .attr("style", "max-width: 100%; height: auto;");
+
+        // Grid
+        svg.append("g")
+            .attr("stroke", "#f8bbd0")
+            .attr("stroke-opacity", 0.8)
+            .call(g => g.append("g")
+            .selectAll("line")
+            .data(x.ticks())
+            .join("line")
+                .attr("x1", d => 0.5 + x(d))
+                .attr("x2", d => 0.5 + x(d))
+                .attr("y1", marginTop)
+                .attr("y2", height - marginBottom))
+            .call(g => g.append("g")
+            .selectAll("line")
+            .data(y.ticks())
+            .join("line")
+                .attr("y1", d => 0.5 + y(d))
+                .attr("y2", d => 0.5 + y(d))
+                .attr("x1", marginLeft)
+                .attr("x2", width - marginRight));
+
+        // X-axis
+        svg.append("g")
+            .attr("transform", `translate(0,${height - marginBottom})`)
+            .call(d3.axisBottom(x).ticks(width / 80).tickFormat(d => "$" + d))
+            .call(g => g.select(".domain").remove())
+            .call(g => g.append("text")
+            .attr("class", "axis-label")
+            .attr("x", width - marginRight)
+            .attr("y", marginBottom - 6)
+            .attr("fill", "#a0566b")
+            .attr("text-anchor", "end")
+            .text("Average Product Price (USD) →"));
+
+        // Y-axis
+        svg.append("g")
+            .attr("transform", `translate(${marginLeft},0)`)
+            .call(d3.axisLeft(y).tickFormat(d3.format(".2f")))
+            .call(g => g.select(".domain").remove())
+            .call(g => g.append("text")
+            .attr("class", "axis-label")
+            .attr("x", -marginLeft)
+            .attr("y", 15)
+            .attr("fill", "#a0566b")
+            .attr("text-anchor", "start")
+            .text("↑ Average Rating (out of 5)"));
+
+        // Symbols
+        svg.append("g")
+            .attr("stroke-width", 1.5)
+            .selectAll("path")
+            .data(data)
+            .join("path")
+            .attr("transform", d => `translate(${x(d.avgPrice)},${y(d.avgRating)})`)
+            .attr("fill", d => color(d.tier))
+            .attr("fill-opacity", 0.75)
+            .attr("stroke", d => color(d.tier))
+            .attr("d", d => shape(d.tier))
+            .style("cursor", "pointer")
+            .on("mouseover", (event, d) => {
+                var brandLine  = "<strong>" + d.brand + "</strong><br/>";
+                var tierLine   = "Tier: " + d.tier + "<br/>";
+                var priceLine  = "Avg price: $" + d.avgPrice.toFixed(2) + "<br/>";
+                var ratingLine = "Avg rating: " + d.avgRating.toFixed(2) + " / 5<br/>";
+                var reviewLine = "Reviews: " + d.count.toLocaleString();
+
+                tooltip.style("opacity", 1)
+                    .html(brandLine + tierLine + priceLine + ratingLine + reviewLine);
+            })
+            .on("mousemove", event => {
+                tooltip
+                .style("left", (event.pageX + 14) + "px")
+                .style("top",  (event.pageY - 28) + "px");
+            })
+            .on("mouseout", () => tooltip.style("opacity", 0));
+
+        // Outlier labels
+        const notable = d => d.avgPrice > 300 || d.avgRating > 4.75 || d.avgRating < 3.6;
+        svg.append("g")
+            .attr("font-family", "Georgia, serif")
+            .attr("font-size", "0.68rem")
+            .attr("fill", "#7b3a52")
+            .selectAll("text")
+            .data(data.filter(notable))
+            .join("text")
+            .attr("x", d => x(d.avgPrice) + 10)
+            .attr("y", d => y(d.avgRating) + 4)
+            .text(d => d.brand);
+
+        // Legend
+        const legend = svg.append("g")
+            .attr("transform", "translate(" + (width - marginRight - 160) + ", " + (marginTop + 10) + ")");
+
+        tiers.forEach((tier, i) => {
+            const row = legend.append("g")
+            .attr("transform", "translate(0, " + (i * 24) + ")");
+
+            row.append("path")
+            .attr("d", shape(tier))
+            .attr("fill", color(tier))
+            .attr("fill-opacity", 0.75)
+            .attr("stroke", color(tier))
+            .attr("stroke-width", 1.5);
+
+            row.append("text")
+            .attr("class", "legend-text")
+            .attr("x", 14)
+            .attr("dy", "0.35em")
+            .text(tier);
+        });
+
+        document.getElementById("chart").appendChild(svg.node());
+        });
+    </script>
+
+    <hr>
+    <a href="/index.html">Go back to homepage</a>
+
+</body>
+</html>

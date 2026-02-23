@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Boxplot in D3</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        body {
+        font-family: Georgia, serif;
+        background-color: #fff0f5;
+        color: #5a2a3a;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 40px 20px;
+        }
+
+        h1 {
+        font-size: 1.6rem;
+        margin-bottom: 8px;
+        color: #c2185b;
+        }
+
+        p.subtitle {
+        font-size: 0.95rem;
+        color: #a0566b;
+        margin-bottom: 32px;
+        }
+
+        #chart {
+        background: #fff;
+        border: 1.5px solid #f8bbd0;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 16px rgba(194, 24, 91, 0.08);
+        }
+
+        .tick text {
+        fill: #7b3a52;
+        font-size: 0.78rem;
+        font-family: Georgia, serif;
+        }
+
+        .tick line {
+        stroke: #f8bbd0;
+        }
+
+        .domain {
+        stroke: #f8bbd0;
+        }
+
+        .axis-label {
+        fill: #a0566b;
+        font-size: 0.85rem;
+        font-family: Georgia, serif;
+        }
+    </style>
+    </head>
+    <body>
+
+    <h1>Review Helpfulness Score by Hair Color in Sephor Reviews</h1>
+    <p class="subtitle">D3 Box Plot - Distribution of helpfulness ratings across reviewer hair color groups.</p>
+    <div id="chart"></div>
+
+    <!-- Reference: https://observablehq.com/@d3/box-plot/2 -->
+
+    <script>
+        const width = 928;
+        const height = 600;
+        const marginTop = 30;
+        const marginRight = 30;
+        const marginBottom = 50;
+        const marginLeft = 60;
+
+        // Only include these well-populated hair color groups
+        const validHairColors = ["black", "brown", "blonde", "auburn", "red", "gray", "brunette"];
+
+        // Tooltip
+        const tooltip = d3.select("body").append("div")
+        .style("position", "absolute")
+        .style("background", "#fff")
+        .style("border", "1.5px solid #f8bbd0")
+        .style("border-radius", "8px")
+        .style("padding", "8px 12px")
+        .style("font-family", "Georgia, serif")
+        .style("font-size", "0.8rem")
+        .style("color", "#5a2a3a")
+        .style("box-shadow", "0 4px 12px rgba(194,24,91,0.1)")
+        .style("pointer-events", "none")
+        .style("opacity", 0);
+
+        d3.csv("/A4/data/reviews_0-250.csv").then(rawData => {
+
+        // Group helpfulness values by hair color
+        const grouped = d3.rollup(
+            rawData.filter(d => d.hair_color && d.helpfulness && validHairColors.includes(d.hair_color)),
+            v => {
+            // Sort values so quantile functions work correctly
+            const values = v.map(d => +d.helpfulness).sort(d3.ascending);
+            const q1  = d3.quantile(values, 0.25);
+            const q2  = d3.quantile(values, 0.50);
+            const q3  = d3.quantile(values, 0.75);
+            const iqr = q3 - q1;
+            const r0  = Math.max(values[0],               q1 - iqr * 1.5);
+            const r1  = Math.min(values[values.length - 1], q3 + iqr * 1.5);
+            const outliers = values.filter(val => val < r0 || val > r1);
+            return { q1, q2, q3, r0, r1, outliers, count: values.length };
+            },
+            d => d.hair_color
+        );
+
+        // Convert map to array and sort by median descending
+        const data = Array.from(grouped, ([hairColor, stats]) => ({ hairColor, ...stats }))
+            .sort((a, b) => b.q2 - a.q2);
+
+        // x is hair color (categorical), y is helpfulness score (0 to 1)
+        const x = d3.scaleBand()
+            .domain(data.map(d => d.hairColor))
+            .range([marginLeft, width - marginRight])
+            .padding(0.3);
+
+        const y = d3.scaleLinear()
+            .domain([0, 1]).nice()
+            .range([height - marginBottom, marginTop]);
+
+        const svg = d3.create("svg")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("viewBox", [0, 0, width, height])
+            .attr("style", "max-width: 100%; height: auto;")
+            .attr("text-anchor", "middle");
+
+        // Grid lines
+        svg.append("g")
+            .attr("stroke", "#f8bbd0")
+            .attr("stroke-opacity", 0.8)
+            .selectAll("line")
+            .data(y.ticks())
+            .join("line")
+            .attr("x1", marginLeft)
+            .attr("x2", width - marginRight)
+            .attr("y1", d => 0.5 + y(d))
+            .attr("y2", d => 0.5 + y(d));
+
+        // One group per hair color
+        const g = svg.append("g")
+            .selectAll("g")
+            .data(data)
+            .join("g");
+
+        // Range
+        g.append("path")
+            .attr("stroke", "#c2185b")
+            .attr("stroke-width", 1.5)
+            .attr("d", d =>
+            "M" + (x(d.hairColor) + x.bandwidth() / 2) + "," + y(d.r1) +
+            "V" + y(d.r0)
+            );
+
+        // IQR box (q1 to q3)
+        g.append("path")
+            .attr("fill", "#f48fb1")
+            .attr("fill-opacity", 0.5)
+            .attr("stroke", "#c2185b")
+            .attr("stroke-width", 1.5)
+            .attr("d", d =>
+            "M" + x(d.hairColor) + "," + y(d.q3) +
+            "H" + (x(d.hairColor) + x.bandwidth()) +
+            "V" + y(d.q1) +
+            "H" + x(d.hairColor) +
+            "Z"
+            )
+            .style("cursor", "pointer")
+            .on("mouseover", (event, d) => {
+            var titleLine   = "<strong>" + d.hairColor + "</strong><br/>";
+            var countLine   = "Reviews: " + d.count.toLocaleString() + "<br/>";
+            var medianLine  = "Median: " + d.q2.toFixed(2) + "<br/>";
+            var q1Line      = "Q1: " + d.q1.toFixed(2) + "<br/>";
+            var q3Line      = "Q3: " + d.q3.toFixed(2) + "<br/>";
+            tooltip.style("opacity", 1)
+                .html(titleLine + countLine + medianLine + q1Line + q3Line);
+            })
+            .on("mousemove", event => {
+            tooltip
+                .style("left", (event.pageX + 14) + "px")
+                .style("top",  (event.pageY - 28) + "px");
+            })
+            .on("mouseout", () => tooltip.style("opacity", 0));
+
+        // Median line
+        g.append("path")
+            .attr("stroke", "#880e4f")
+            .attr("stroke-width", 2.5)
+            .attr("d", d =>
+            "M" + x(d.hairColor) + "," + y(d.q2) +
+            "H" + (x(d.hairColor) + x.bandwidth())
+            );
+
+        // Outlier dots with jitter
+        g.append("g")
+            .attr("fill", "#c2185b")
+            .attr("fill-opacity", 0.25)
+            .attr("stroke", "none")
+            .attr("transform", d => "translate(" + (x(d.hairColor) + x.bandwidth() / 2) + ",0)")
+            .selectAll("circle")
+            .data(d => d.outliers)
+            .join("circle")
+            .attr("r", 2.5)
+            .attr("cx", () => (Math.random() - 0.5) * (x.bandwidth() * 0.6))
+            .attr("cy", d => y(d));
+
+        // X-axis
+        svg.append("g")
+            .attr("transform", "translate(0," + (height - marginBottom) + ")")
+            .call(d3.axisBottom(x).tickSizeOuter(0))
+            .call(g => g.select(".domain").remove())
+            .call(g => g.append("text")
+            .attr("class", "axis-label")
+            .attr("x", width - marginRight)
+            .attr("y", marginBottom - 8)
+            .attr("fill", "#a0566b")
+            .attr("text-anchor", "end")
+            .text("Hair Color →"));
+
+        // Y-axis
+        svg.append("g")
+            .attr("transform", "translate(" + marginLeft + ",0)")
+            .call(d3.axisLeft(y).tickFormat(d3.format(".0%")))
+            .call(g => g.select(".domain").remove())
+            .call(g => g.append("text")
+            .attr("class", "axis-label")
+            .attr("x", -marginLeft)
+            .attr("y", 15)
+            .attr("fill", "#a0566b")
+            .attr("text-anchor", "start")
+            .text("↑ Helpfulness Score"));
+
+        document.getElementById("chart").appendChild(svg.node());
+        });
+    </script>
+    <hr>
+        <a href="/index.html">Go back to homepage</a>
+
+</body>
+</html>
