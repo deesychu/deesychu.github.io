@@ -74,7 +74,7 @@
         const marginLeft = 60;
 
         // Only include these well-populated hair color groups
-        const validHairColors = ["black", "brown", "blonde", "auburn", "red", "gray", "brunette"];
+        const validHairColors = ["black", "brown", "blonde", "auburn", "red", "gray"];
 
         // Tooltip
         const tooltip = d3.select("body").append("div")
@@ -90,8 +90,12 @@
         .style("pointer-events", "none")
         .style("opacity", 0);
 
-        d3.csv("/A4/data/reviews_0-250.csv").then(rawData => {
-
+        d3.csv("/A4/data/reviews_750-1250.csv").then(rawData => {
+        // Treat brunette as brown before grouping
+        rawData.forEach(d => {
+            if (d.hair_color === "brunette") d.hair_color = "brown";
+        });
+        
         // Group helpfulness values by hair color
         const grouped = d3.rollup(
             rawData.filter(d => d.hair_color && d.helpfulness && validHairColors.includes(d.hair_color)),

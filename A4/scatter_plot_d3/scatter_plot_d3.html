@@ -112,7 +112,7 @@
         .style("pointer-events", "none")
         .style("opacity", 0);
 
-        d3.csv("/A4/data/reviews_0-250.csv").then(rawData => {
+        d3.csv("/A4/data/reviews_750-1250.csv").then(rawData => {
 
         // Aggregate by brand
         const brandMap = d3.rollup(
@@ -236,7 +236,7 @@
 
         // Legend
         const legend = svg.append("g")
-            .attr("transform", "translate(" + (width - marginRight - 160) + ", " + (marginTop + 10) + ")");
+            .attr("transform", "translate(" + (width - marginRight - 160) + ", " + (height - marginBottom - 110) + ")");
 
         tiers.forEach((tier, i) => {
             const row = legend.append("g")
