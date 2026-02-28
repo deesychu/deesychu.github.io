@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Bubble Chart in D3</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        body {
+        font-family: Georgia, serif;
+        background-color: #fff0f5;
+        color: #5a2a3a;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 40px 20px;
+        }
+
+        h1 {
+        font-size: 1.6rem;
+        margin-bottom: 8px;
+        color: #c2185b;
+        }
+
+        p.subtitle {
+        font-size: 0.95rem;
+        color: #a0566b;
+        margin-bottom: 32px;
+        }
+
+        #chart {
+        background: #fff;
+        border: 1.5px solid #f8bbd0;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 16px rgba(194, 24, 91, 0.08);
+        }
+
+        .tick text {
+        fill: #7b3a52;
+        font-size: 0.78rem;
+        font-family: Georgia, serif;
+        }
+
+        .tick line {
+        stroke: #f8bbd0;
+        }
+
+        .domain {
+        stroke: #f8bbd0;
+        }
+
+        .axis-label {
+        fill: #a0566b;
+        font-size: 0.85rem;
+        font-family: Georgia, serif;
+        }
+
+        .legend-title {
+        font-family: Georgia, serif;
+        font-size: 0.82rem;
+        font-weight: bold;
+        fill: #5a2a3a;
+        }
+
+        .legend-text {
+        font-family: Georgia, serif;
+        font-size: 0.78rem;
+        fill: #5a2a3a;
+        }
+    </style>
+    </head>
+    <body>
+
+    <h1>Helpfulness vs. Positive Feedback in Sephora Reviewer's Skin Tones - Bubble Chart</h1>
+    <p class="subtitle">Each bubble is a skin tone group. x = avg helpfulness, y = avg positive feedback count, size = number of reviews.</p>
+    <div id="chart"></div>
+
+    <!-- Reference: https://observablehq.com/@d3/bubble-chart/2 -->
+
+    <script>
+        const width  = 928;
+        const height = 650;
+        const marginTop    = 40;
+        const marginRight  = 160;
+        const marginBottom = 60;
+        const marginLeft   = 70;
+
+        const validTones = ["fair", "fairLight", "light", "lightMedium", "medium", "mediumTan", "tan", "deep", "rich"];
+
+        const colorRange = [
+        "#9c27b0",
+        "#ce93d8",
+        "#f48fb1",
+        "#e91e8c",
+        "#c2185b",
+        "#7b1fa2",
+        "#64b5f6",
+        "#1976d2",
+        "#0d47a1"
+        ];
+
+        const color = d3.scaleOrdinal()
+        .domain(validTones)
+        .range(colorRange);
+
+        // Tooltip
+        const tooltip = d3.select("body").append("div")
+        .style("position", "absolute")
+        .style("background", "#fff")
+        .style("border", "1.5px solid #f8bbd0")
+        .style("border-radius", "8px")
+        .style("padding", "8px 12px")
+        .style("font-family", "Georgia, serif")
+        .style("font-size", "0.8rem")
+        .style("color", "#5a2a3a")
+        .style("box-shadow", "0 4px 12px rgba(194,24,91,0.1)")
+        .style("pointer-events", "none")
+        .style("opacity", 0);
+
+        d3.csv("/A5/data/reviews_750-1250.csv").then(rawData => {
+
+        const toneMap = d3.rollup(
+            rawData.filter(d => d.skin_tone && d.helpfulness && d.total_pos_feedback_count
+                            && validTones.includes(d.skin_tone)),
+            v => ({
+            avgHelpfulness: d3.mean(v, d => +d.helpfulness),
+            avgPosFeedback: d3.mean(v, d => +d.total_pos_feedback_count),
+            count: v.length
+            }),
+            d => d.skin_tone
+        );
+
+        const data = Array.from(toneMap, ([tone, vals]) => ({ tone, ...vals }));
+
+        const x = d3.scaleLinear()
+            .domain(d3.extent(data, d => d.avgHelpfulness)).nice()
+            .range([marginLeft, width - marginRight]);
+
+        const y = d3.scaleLinear()
+            .domain([0, d3.max(data, d => d.avgPosFeedback) * 1.2])
+            .range([height - marginBottom, marginTop]);
+
+        const r = d3.scaleSqrt()
+            .domain(d3.extent(data, d => d.count))
+            .range([20, 90]);
+
+        // Jitter offsets per bubble
+        const jitter = {
+            fair:        { dx:  30, dy: -20 },
+            fairLight:   { dx: -30, dy:  30 },
+            light:       { dx:   0, dy:  40 },
+            lightMedium: { dx:  20, dy: -40 },
+            medium:      { dx: -40, dy:  10 },
+            mediumTan:   { dx:  10, dy:  20 },
+            tan:         { dx:   0, dy:   0 },
+            deep:        { dx:  15, dy:   0 },
+            rich:        { dx:   0, dy:   0 }
+        };
+
+        const svg = d3.create("svg")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("viewBox", [0, 0, width, height])
+            .attr("style", "max-width: 100%; height: auto;");
+
+        // Grid lines
+        svg.append("g")
+            .attr("stroke", "#f8bbd0")
+            .attr("stroke-opacity", 0.8)
+            .call(g => g.append("g")
+            .selectAll("line")
+            .data(x.ticks())
+            .join("line")
+                .attr("x1", d => 0.5 + x(d))
+                .attr("x2", d => 0.5 + x(d))
+                .attr("y1", marginTop)
+                .attr("y2", height - marginBottom))
+            .call(g => g.append("g")
+            .selectAll("line")
+            .data(y.ticks())
+            .join("line")
+                .attr("y1", d => 0.5 + y(d))
+                .attr("y2", d => 0.5 + y(d))
+                .attr("x1", marginLeft)
+                .attr("x2", width - marginRight));
+
+        // X-axis
+        svg.append("g")
+            .attr("transform", "translate(0," + (height - marginBottom) + ")")
+            .call(d3.axisBottom(x).ticks(8).tickFormat(d3.format(".0%")))
+            .call(g => g.select(".domain").remove())
+            .call(g => g.append("text")
+            .attr("class", "axis-label")
+            .attr("x", width - marginRight)
+            .attr("y", marginBottom - 8)
+            .attr("fill", "#a0566b")
+            .attr("text-anchor", "end")
+            .text("Average Helpfulness Score →"));
+
+        // Y-axis
+        svg.append("g")
+            .attr("transform", "translate(" + marginLeft + ",0)")
+            .call(d3.axisLeft(y).ticks(6))
+            .call(g => g.select(".domain").remove())
+            .call(g => g.append("text")
+            .attr("class", "axis-label")
+            .attr("x", -marginLeft)
+            .attr("y", 20)
+            .attr("fill", "#a0566b")
+            .attr("text-anchor", "start")
+            .text("↑ Avg Positive Feedback Count"));
+
+        // Bubbles
+        svg.append("g")
+            .selectAll("circle")
+            .data(data)
+            .join("circle")
+            .attr("cx", d => x(d.avgHelpfulness) + jitter[d.tone].dx)
+            .attr("cy", d => y(d.avgPosFeedback)  + jitter[d.tone].dy)
+            .attr("r",  d => r(d.count))
+            .attr("fill", d => color(d.tone))
+            .attr("fill-opacity", 0.5)
+            .attr("stroke", d => color(d.tone))
+            .attr("stroke-width", 1.5)
+            .style("cursor", "pointer")
+            .on("mouseover", (event, d) => {
+                var titleLine = "<strong>" + d.tone + "</strong><br/>";
+                var helpLine  = "Avg helpfulness: " + (d.avgHelpfulness * 100).toFixed(1) + "%<br/>";
+                var posLine   = "Avg positive feedback: " + d.avgPosFeedback.toFixed(2) + "<br/>";
+                var countLine = "Total reviews: " + d.count.toLocaleString();
+                tooltip.style("opacity", 1)
+                .html(titleLine + helpLine + posLine + countLine);
+            })
+            .on("mousemove", event => {
+                tooltip
+                .style("left", (event.pageX + 14) + "px")
+                .style("top",  (event.pageY - 28) + "px");
+            })
+            .on("mouseout", () => tooltip.style("opacity", 0));
+
+        // Labels
+        svg.append("g")
+            .attr("text-anchor", "middle")
+            .attr("font-family", "Georgia, serif")
+            .attr("pointer-events", "none")
+            .selectAll("text")
+            .data(data)
+            .join("text")
+            .attr("x", d => x(d.avgHelpfulness) + jitter[d.tone].dx)
+            .attr("y", d => y(d.avgPosFeedback)  + jitter[d.tone].dy)
+            .attr("dy", "0.35em")
+            .attr("font-size", d => Math.min(r(d.count) / 2.5, 14) + "px")
+            .attr("fill", "#fff")
+            .attr("fill-opacity", 0.95)
+            .text(d => d.tone);
+
+        // Color Legend
+        const colorLegend = svg.append("g")
+            .attr("transform", "translate(" + (width - marginRight + 16) + "," + marginTop + ")");
+
+        colorLegend.append("text")
+            .attr("class", "legend-title")
+            .attr("x", 0)
+            .attr("y", 0)
+            .text("Skin Tone");
+
+        validTones.forEach((tone, i) => {
+            var row = colorLegend.append("g")
+            .attr("transform", "translate(0," + (i * 20 + 18) + ")");
+
+            row.append("circle")
+            .attr("r", 6)
+            .attr("fill", color(tone))
+            .attr("fill-opacity", 0.8);
+
+            row.append("text")
+            .attr("class", "legend-text")
+            .attr("x", 14)
+            .attr("dy", "0.35em")
+            .text(tone);
+        });
+
+        // Size Legend
+        const sizeLegend = svg.append("g")
+            .attr("transform", "translate(" + (width - marginRight + 16) + "," + (marginTop + 220) + ")");
+
+        sizeLegend.append("text")
+            .attr("class", "legend-title")
+            .attr("x", 0)
+            .attr("y", 0)
+            .text("Review Count");
+
+        var sizeOffsetY = 20;
+        var sizeSamples = [500, 3000, 9000];
+
+        sizeSamples.forEach(val => {
+            var radius = r(val);
+            sizeOffsetY += radius + 4;
+
+            sizeLegend.append("circle")
+            .attr("cx", 20)
+            .attr("cy", sizeOffsetY)
+            .attr("r", radius)
+            .attr("fill", "none")
+            .attr("stroke", "#7b3a52")
+            .attr("stroke-width", 1);
+
+            sizeLegend.append("text")
+            .attr("class", "legend-text")
+            .attr("x", 20 + radius + 8)
+            .attr("y", sizeOffsetY)
+            .attr("dy", "0.35em")
+            .text(val.toLocaleString());
+
+            sizeOffsetY += radius + 8;
+        });
+
+        document.getElementById("chart").appendChild(svg.node());
+        });
+    </script>
+
+    <hr>
+    <a href="/index.html">Go back to homepage</a>
+
+</body>
+</html>

@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Scatterplot Matrix in D3</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        body {
+        font-family: Georgia, serif;
+        background-color: #fff0f5;
+        color: #5a2a3a;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 40px 20px;
+        }
+
+        h1 {
+        font-size: 1.6rem;
+        margin-bottom: 8px;
+        color: #c2185b;
+        }
+
+        p.subtitle {
+        font-size: 0.95rem;
+        color: #a0566b;
+        margin-bottom: 32px;
+        }
+
+        #chart {
+        background: #fff;
+        border: 1.5px solid #f8bbd0;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 16px rgba(194, 24, 91, 0.08);
+        }
+
+        .tick text {
+        fill: #7b3a52;
+        font-size: 0.65rem;
+        font-family: Georgia, serif;
+        }
+
+        .axis-label {
+        font-family: Georgia, serif;
+        font-size: 0.82rem;
+        font-weight: bold;
+        fill: #5a2a3a;
+        }
+    </style>
+    </head>
+    <body>
+
+    <h1>Sephora Review Metrics — Scatterplot Matrix</h1>
+    <p class="subtitle">Relationships between rating, helpfulness, positive feedback, and negative feedback. Hover to highlight a cell.</p>
+    <div id="chart"></div>
+
+    <!-- Reference: https://observablehq.com/@d3/splom/2 -->
+
+    <script>
+        // Chart dimensions
+        const width   = 900;
+        const padding = 30;
+
+        const columns = ["rating", "helpfulness", "total_feedback_count", "price_usd"];
+
+        const labels = {
+        rating:               "Rating",
+        helpfulness:          "Helpfulness",
+        total_feedback_count: "Feedback Count",
+        price_usd:            "Price (USD)"
+        };
+
+        // Cell size
+        const size = (width - (columns.length + 1) * padding) / columns.length + padding;
+        const height = width;
+
+        // Color by star rating (1.0 – 5.0)
+        const color = d3.scaleOrdinal()
+        .domain([1, 2, 3, 4, 5])
+        .range(["#880e4f", "#c2185b", "#e91e8c", "#f48fb1", "#ce93d8"]);
+
+        // Tooltip
+        const tooltip = d3.select("body").append("div")
+        .style("position", "absolute")
+        .style("background", "#fff")
+        .style("border", "1.5px solid #f8bbd0")
+        .style("border-radius", "8px")
+        .style("padding", "8px 12px")
+        .style("font-family", "Georgia, serif")
+        .style("font-size", "0.8rem")
+        .style("color", "#5a2a3a")
+        .style("box-shadow", "0 4px 12px rgba(194,24,91,0.1)")
+        .style("pointer-events", "none")
+        .style("opacity", 0);
+
+        d3.csv("/A5/data/reviews_750-1250.csv").then(rawData => {
+
+        // Clean and cap data so outliers don't squash the dots
+        const allData = rawData
+            .map(d => ({
+            rating:               +d.rating,
+            helpfulness:          +d.helpfulness,
+            total_feedback_count: +d.total_feedback_count,
+            price_usd:            +d.price_usd
+            }))
+            .filter(d => d.total_feedback_count <= 50 && d.price_usd <= 300);
+        
+        // Sample & shuffle down to 800 random rows - chart will run faster/no lag
+        const data = allData
+            .sort(() => Math.random() - 0.5)
+            .slice(0, 800);
+
+        // One x scale per column
+        const x = columns.map(col =>
+            d3.scaleLinear()
+            .domain(d3.extent(data, d => d[col]))
+            .rangeRound([padding / 2, size - padding / 2])
+        );
+
+        // One y scale per column — copy of x with flipped range
+        const y = x.map(xi => xi.copy().range([size - padding / 2, padding / 2]));
+
+        // Horizontal axis — one per column, tickSize spans full matrix height
+        const axisx = d3.axisBottom().ticks(4).tickSize(size * columns.length);
+        const xAxis = g => g.selectAll("g")
+            .data(x)
+            .join("g")
+            .attr("transform", (d, i) => "translate(" + (i * size) + ",0)")
+            .each(function(d) { d3.select(this).call(axisx.scale(d)); })
+            .call(g => g.select(".domain").remove())
+            .call(g => g.selectAll(".tick line").attr("stroke", "#f8bbd0"));
+
+        // Vertical axis — one per row, tickSize spans full matrix width
+        const axisy = d3.axisLeft().ticks(4).tickSize(-size * columns.length);
+        const yAxis = g => g.selectAll("g")
+            .data(y)
+            .join("g")
+            .attr("transform", (d, i) => "translate(0," + (i * size) + ")")
+            .each(function(d) { d3.select(this).call(axisy.scale(d)); })
+            .call(g => g.select(".domain").remove())
+            .call(g => g.selectAll(".tick line").attr("stroke", "#f8bbd0"));
+
+        const svg = d3.create("svg")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("viewBox", [-padding, 0, width, height])
+            .attr("style", "max-width: 100%; height: auto;");
+
+        // Hidden circle style for the highlight interaction
+        svg.append("style")
+            .text("circle.hidden { fill: #ccc; fill-opacity: 0.2; }");
+
+        // Axes
+        svg.append("g").call(xAxis);
+        svg.append("g").call(yAxis);
+
+        // One cell group per [i, j] pair
+        const cell = svg.append("g")
+            .selectAll("g")
+            .data(d3.cross(d3.range(columns.length), d3.range(columns.length)))
+            .join("g")
+            .attr("transform", ([i, j]) => "translate(" + (i * size) + "," + (j * size) + ")");
+
+        // Cell border rect
+        cell.append("rect")
+            .attr("fill", "none")
+            .attr("stroke", "#f8bbd0")
+            .attr("stroke-width", 1.5)
+            .attr("x", padding / 2 + 0.5)
+            .attr("y", padding / 2 + 0.5)
+            .attr("width",  size - padding)
+            .attr("height", size - padding);
+
+        // Dots — one circle per data point in each cell
+        cell.each(function([i, j]) {
+            d3.select(this).selectAll("circle")
+            .data(data)
+            .join("circle")
+                .attr("cx", d => x[i](d[columns[i]]))
+                .attr("cy", d => y[j](d[columns[j]]));
+        });
+
+        // Style all circles — colored by rating
+        const circle = cell.selectAll("circle")
+            .attr("r", 2.5)
+            .attr("fill-opacity", 0.5)
+            .attr("fill", d => color(d.rating));
+
+        // Diagonal labels
+        svg.append("g")
+            .style("pointer-events", "none")
+            .selectAll("text")
+            .data(columns)
+            .join("text")
+            .attr("class", "axis-label")
+            .attr("transform", (d, i) => "translate(" + (i * size) + "," + (i * size) + ")")
+            .attr("x", padding + 4)
+            .attr("y", padding + 4)
+            .attr("dy", ".71em")
+            .text(d => labels[d]);
+
+        // Hover Highlight
+        // Track which cell is currently highlighted
+        var highlightedCell = null;
+
+        cell
+            .on("mouseover", function(event, [i, j]) {
+            highlightedCell = [i, j];
+
+            // Highlight the hovered cell border
+            d3.select(this).select("rect")
+                .attr("stroke", "#c2185b")
+                .attr("stroke-width", 2);
+
+            // Fade dots in all OTHER cells
+            cell.each(function([ci, cj]) {
+                if (ci !== i || cj !== j) {
+                d3.select(this).selectAll("circle")
+                    .classed("hidden", true);
+                }
+            });
+
+            // Show tooltip with axis names for this cell
+            var xLabel = labels[columns[i]];
+            var yLabel = labels[columns[j]];
+            tooltip.style("opacity", 1)
+                .html("<strong>" + xLabel + " vs " + yLabel + "</strong><br/>Colored by star rating");
+            })
+            .on("mousemove", event => {
+            tooltip
+                .style("left", (event.pageX + 14) + "px")
+                .style("top",  (event.pageY - 28) + "px");
+            })
+            .on("mouseleave", function() {
+            highlightedCell = null;
+
+            // Restore hovered cell border
+            d3.select(this).select("rect")
+                .attr("stroke", "#f8bbd0")
+                .attr("stroke-width", 1.5);
+
+            // Restore all dots
+            cell.selectAll("circle").classed("hidden", false);
+
+            tooltip.style("opacity", 0);
+            });
+
+        // Color legend — one entry per star rating
+        const legend = svg.append("g")
+            .attr("transform", "translate(" + (width - padding - 100) + "," + padding + ")");
+
+        legend.append("text")
+            .attr("font-family", "Georgia, serif")
+            .attr("font-size", "0.78rem")
+            .attr("font-weight", "bold")
+            .attr("fill", "#5a2a3a")
+            .attr("x", 0).attr("y", 0)
+            .text("Star Rating");
+
+        [1, 2, 3, 4, 5].forEach(function(star, i) {
+            var row = legend.append("g")
+            .attr("transform", "translate(0," + (i * 18 + 16) + ")");
+
+            row.append("circle")
+            .attr("r", 5)
+            .attr("fill", color(star))
+            .attr("fill-opacity", 0.8);
+
+            row.append("text")
+            .attr("font-family", "Georgia, serif")
+            .attr("font-size", "0.75rem")
+            .attr("fill", "#5a2a3a")
+            .attr("x", 12)
+            .attr("dy", "0.35em")
+            .text(star + " star" + (star > 1 ? "s" : ""));
+        });
+
+        document.getElementById("chart").appendChild(svg.node());
+        });
+    </script>
+
+</body>
+</html>
