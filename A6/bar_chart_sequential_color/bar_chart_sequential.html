@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Bar Chart – Sequential Color Scale</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-legend/2.25.6/d3-legend.min.js"></script>
+    <style>
+        body {
+        font-family: Georgia, serif;
+        background-color: #fff0f5;
+        color: #5a2a3a;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 40px 20px;
+        }
+
+        h1 {
+        font-size: 1.6rem;
+        margin-bottom: 8px;
+        color: #c2185b;
+        }
+
+        p.subtitle {
+        font-size: 0.95rem;
+        color: #a0566b;
+        margin-bottom: 32px;
+        text-align: center;
+        max-width: 700px;
+        }
+
+        #chart {
+        background: #fff;
+        border: 1.5px solid #f8bbd0;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 16px rgba(194, 24, 91, 0.08);
+        }
+
+        .tick text {
+        fill: #7b3a52;
+        font-size: 0.75rem;
+        font-family: Georgia, serif;
+        }
+
+        .domain {
+        stroke: #f8bbd0;
+        }
+
+        .axis-label {
+        fill: #a0566b;
+        font-size: 0.85rem;
+        font-family: Georgia, serif;
+        }
+
+        .legendSequential text {
+        fill: #5a2a3a;
+        font-family: Georgia, serif;
+        font-size: 12px;
+        }
+    </style>
+    </head>
+    <body>
+
+    <h1>Top 10 Brands by Average Review Engagement</h1>
+    <p class="subtitle">
+        Brands ranked by how much feedback their reviews receive on average.
+        Bar color shows the brand's average product price — light pink = affordable, dark purple = expensive.
+    </p>
+    <div id="chart"></div>
+
+    <!--
+        References:
+        - D3 bar chart: https://observablehq.com/@d3/bar-chart
+        - Sequential color scale: https://using-d3js.com/04_05_sequential_scales.html
+        - d3-legend by Susie Lu: https://d3-legend.susielu.com/
+    -->
+
+    <script>
+        // Chart dimensions and margins
+        const width        = 820;
+        const height       = 560;
+        const marginTop    = 30;
+        const marginRight  = 30; 
+        const marginBottom = 140;
+        const marginLeft   = 70;
+
+        // Tooltip div
+        const tooltip = d3.select("body").append("div")
+        .style("position", "absolute")
+        .style("background", "#fff")
+        .style("border", "1.5px solid #f8bbd0")
+        .style("border-radius", "8px")
+        .style("padding", "8px 12px")
+        .style("font-family", "Georgia, serif")
+        .style("font-size", "0.8rem")
+        .style("color", "#5a2a3a")
+        .style("box-shadow", "0 4px 12px rgba(194,24,91,0.1)")
+        .style("pointer-events", "none")
+        .style("opacity", 0);
+
+        d3.csv("/A6/data/reviews_1250-end.csv").then(rawData => {
+
+        // Group by brand and compute averages
+        const brandMap = d3.rollup(
+            rawData.filter(d => d.brand_name && d.total_feedback_count && d.price_usd),
+            v => ({
+            avgFeedback: d3.mean(v, d => +d.total_feedback_count),  // y axis
+            avgPrice:    d3.mean(v, d => +d.price_usd),             // color
+            count:       v.length
+            }),
+            d => d.brand_name
+        );
+
+        const allBrands = Array.from(brandMap, ([brand, stats]) => ({
+            brand,
+            avgFeedback: stats.avgFeedback,
+            avgPrice:    stats.avgPrice,
+            count:       stats.count
+        })).filter(d => d.count >= 50);
+
+        // Sort ascending by avgFeedback
+        const data = allBrands
+            .sort((a, b) => a.avgFeedback - b.avgFeedback)
+            .slice(-10);
+
+        // x scale — brand name
+        const x = d3.scaleBand()
+            .domain(data.map(d => d.brand))
+            .range([marginLeft, width - marginRight])
+            .padding(0.25);
+
+        // y scale — avg feedback count
+        const y = d3.scaleLinear()
+            .domain([0, d3.max(data, d => d.avgFeedback)]).nice()
+            .range([height - marginBottom, marginTop]);
+
+        // Sequential color scale — d3.interpolateRdPu
+        // Low avg price → light pink, high avg price → dark purple
+        const priceExtent = d3.extent(data, d => d.avgPrice);
+        const colorScale = d3.scaleSequential()
+            .domain(priceExtent)
+            .interpolator(d3.interpolateRdPu);
+
+        const svg = d3.create("svg")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("viewBox", [0, 0, width, height])
+            .attr("style", "max-width: 100%; height: auto;");
+
+        // X-axis — brand name labels
+        svg.append("g")
+            .attr("transform", "translate(0," + (height - marginBottom) + ")")
+            .call(d3.axisBottom(x).tickSizeOuter(0))
+            .call(g => g.select(".domain").attr("stroke", "#f8bbd0"))
+            .call(g => g.selectAll(".tick text")
+            .attr("transform", "rotate(-30)")
+            .style("text-anchor", "end")
+            .attr("dx", "-0.5em")
+            .attr("dy", "0.5em")
+            .style("font-size", "0.72rem"))
+            .call(g => g.append("text")
+            .attr("class", "axis-label")
+            .attr("x", (width - marginLeft - marginRight) / 2 + marginLeft)
+            .attr("y", 52)
+            .attr("text-anchor", "middle")
+            .text("Brand Name"));
+
+        // Y-axis
+        svg.append("g")
+            .attr("transform", "translate(" + marginLeft + ",0)")
+            .call(d3.axisLeft(y).ticks(6))
+            .call(g => g.select(".domain").remove())
+            .call(g => g.selectAll(".tick line").clone()
+            .attr("x2", width - marginLeft - marginRight)
+            .attr("stroke", "#f8bbd0")
+            .attr("stroke-opacity", 0.6))
+            .call(g => g.append("text")
+            .attr("class", "axis-label")
+            .attr("transform", "rotate(-90)")
+            .attr("x", -((height - marginTop - marginBottom) / 2 + marginTop))
+            .attr("y", -marginLeft + 14)
+            .attr("text-anchor", "middle")
+            .text("Avg. Feedback Count per Review"));
+
+        // Bars
+        svg.append("g")
+            .selectAll("rect")
+            .data(data)
+            .join("rect")
+            .attr("x", d => x(d.brand))
+            .attr("y", d => y(d.avgFeedback))
+            .attr("width", x.bandwidth())
+            .attr("height", d => y(0) - y(d.avgFeedback))
+            .attr("fill", d => colorScale(d.avgPrice))
+            .attr("rx", 3)
+
+        // SEQUENTIAL COLOR LEGEND
+        const legendWidth = width - marginLeft - marginRight;
+        const cellCount = 8;
+        const shapeWidth = Math.floor(legendWidth / cellCount) - 4;
+
+        var legendSequential = d3.legendColor()
+            .shapeWidth(shapeWidth)
+            .cells(cellCount)
+            .orient("horizontal")
+            .scale(colorScale)
+            .title("Avg Price (USD)")
+            .labelOffset(15)
+            .shapePadding(50)
+            .labelFormat(d3.format("$,.0f"));
+
+        svg.append("g")
+            .attr("class", "legendSequential")
+            .attr("transform", "translate(" + marginLeft + "," + (height - 55) + ")")
+            .call(legendSequential);
+
+        document.getElementById("chart").appendChild(svg.node());
+        });
+    </script>
+
+    <hr>
+    <a href="/index.html">Go back to homepage</a>
+
+</body>
+</html>

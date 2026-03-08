@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Scatterplot – Qualitative Color Scale</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-legend/2.25.6/d3-legend.min.js"></script>
+    <style>
+        body {
+            font-family: Georgia, serif;
+            background-color: #fff0f5;
+            color: #5a2a3a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            font-size: 1.6rem;
+            margin-bottom: 8px;
+            color: #c2185b;
+        }
+
+        p.subtitle {
+            font-size: 0.95rem;
+            color: #a0566b;
+            margin-bottom: 32px;
+            text-align: center;
+            max-width: 700px;
+        }
+
+        #chart {
+            background: #fff;
+            border: 1.5px solid #f8bbd0;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 16px rgba(194, 24, 91, 0.08);
+        }
+
+        .tick text {
+            fill: #7b3a52;
+            font-size: 0.75rem;
+            font-family: Georgia, serif;
+        }
+
+        .domain {
+            stroke: #f8bbd0;
+        }
+
+        .axis-label {
+            fill: #a0566b;
+            font-size: 0.85rem;
+            font-family: Georgia, serif;
+        }
+
+        .legendOrdinal text {
+            fill: #5a2a3a;
+            font-family: Georgia, serif;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Product Price vs. Review Helpfulness by Skin Type</h1>
+    <p class="subtitle">
+        Each point represents a brand aggregated by reviewer skin type (10+ reviews per group).
+        X axis = average product price (USD), Y axis = average review helpfulness score (0–1).
+        Color shows skin type of the reviewers.
+    </p>
+    <div id="chart"></div>
+
+    <!--
+        References:
+        - D3 scatterplot: https://observablehq.com/@d3/scatterplot
+        - Qualitative color scale Pastel1 (ColorBrewer): https://colorbrewer2.org/#type=qualitative&scheme=Pastel1
+        - d3-legend by Susie Lu: https://d3-legend.susielu.com/
+    -->
+
+    <script>
+        const width        = 820;
+        const height       = 580;
+        const marginTop    = 30;
+        const marginRight  = 40;
+        const marginBottom = 140;
+        const marginLeft   = 70;
+
+        d3.csv("/A6/data/reviews_1250-end.csv").then(rawData => {
+
+            const SKIN_TYPES = ["combination", "dry", "normal", "oily"];
+
+            const groupMap = d3.rollup(
+                rawData.filter(d =>
+                    d.brand_name && d.skin_type &&
+                    SKIN_TYPES.includes(d.skin_type) &&
+                    d.price_usd && d.helpfulness
+                ),
+                v => ({
+                    avgPrice:       d3.mean(v, d => +d.price_usd),
+                    avgHelpfulness: d3.mean(v, d => +d.helpfulness),
+                    count:          v.length
+                }),
+                d => d.brand_name + "|||" + d.skin_type
+            );
+
+            const data = Array.from(groupMap, ([key, stats]) => {
+                const [brand, skin_type] = key.split("|||");
+                return { brand, skin_type, ...stats };
+            }).filter(d => d.count >= 10 && d.avgPrice <= 300);
+
+            //X scale — avg price (USD)
+            const x = d3.scaleLinear()
+                .domain([0, d3.max(data, d => d.avgPrice) * 1.05]).nice()
+                .range([marginLeft, width - marginRight]);
+
+            // Y scale — avg helpfulness (0–1)
+            const y = d3.scaleLinear()
+                .domain([
+                    d3.min(data, d => d.avgHelpfulness) * 0.97,
+                    d3.max(data, d => d.avgHelpfulness) * 1.02
+                ]).nice()
+                .range([height - marginBottom, marginTop]);
+
+            // ── Qualitative color scale — Pastel1 (ColorBrewer)
+            const pastel1Colors = ["#fbb4ae", "#b3cde3", "#ccebc5", "#decbe4"];
+
+            const colorScale = d3.scaleOrdinal()
+                .domain(SKIN_TYPES)
+                .range(pastel1Colors);
+
+            const svg = d3.create("svg")
+                .attr("width", width)
+                .attr("height", height)
+                .attr("viewBox", [0, 0, width, height])
+                .attr("style", "max-width: 100%; height: auto;");
+
+            // Horizontal gridlines
+            svg.append("g")
+                .attr("transform", `translate(${marginLeft},0)`)
+                .call(
+                    d3.axisLeft(y)
+                        .ticks(6)
+                        .tickSize(-(width - marginLeft - marginRight))
+                        .tickFormat("")
+                )
+                .call(g => g.select(".domain").remove())
+                .call(g => g.selectAll(".tick line")
+                    .attr("stroke", "#f8bbd0")
+                    .attr("stroke-opacity", 0.5));
+
+            // Vertical gridlines
+            svg.append("g")
+                .attr("transform", `translate(0,${height - marginBottom})`)
+                .call(
+                    d3.axisBottom(x)
+                        .ticks(6)
+                        .tickSize(-(height - marginTop - marginBottom))
+                        .tickFormat("")
+                )
+                .call(g => g.select(".domain").remove())
+                .call(g => g.selectAll(".tick line")
+                    .attr("stroke", "#f8bbd0")
+                    .attr("stroke-opacity", 0.5));
+
+            // X-axis
+            svg.append("g")
+                .attr("transform", `translate(0,${height - marginBottom})`)
+                .call(d3.axisBottom(x).ticks(6).tickFormat(d => `$${d}`))
+                .call(g => g.select(".domain").attr("stroke", "#f8bbd0"))
+                .call(g => g.append("text")
+                    .attr("class", "axis-label")
+                    .attr("x", (width - marginLeft - marginRight) / 2 + marginLeft)
+                    .attr("y", 40)
+                    .attr("text-anchor", "middle")
+                    .text("Avg. Product Price (USD)"));
+
+            // Y-axis
+            svg.append("g")
+                .attr("transform", `translate(${marginLeft},0)`)
+                .call(d3.axisLeft(y).ticks(6).tickFormat(d3.format(".2f")))
+                .call(g => g.select(".domain").remove())
+                .call(g => g.append("text")
+                    .attr("class", "axis-label")
+                    .attr("transform", "rotate(-90)")
+                    .attr("x", -((height - marginTop - marginBottom) / 2 + marginTop))
+                    .attr("y", -marginLeft + 14)
+                    .attr("text-anchor", "middle")
+                    .text("Avg. Review Helpfulness Score (0–1)"));
+
+            // Scatter points
+            svg.append("g")
+                .selectAll("circle")
+                .data(data)
+                .join("circle")
+                .attr("cx",   d => x(d.avgPrice))
+                .attr("cy",   d => y(d.avgHelpfulness))
+                .attr("r",    5)
+                .attr("fill", d => colorScale(d.skin_type))
+                .attr("stroke", "#c2185b")
+                .attr("stroke-width", 0.6)
+                .attr("opacity", 0.85);
+
+            // QUALITATIVE COLOR LEGEND
+            const legendOrdinal = d3.legendColor()
+                .shape("circle")
+                .shapeRadius(10)
+                .shapePadding(100)
+                .orient("horizontal")
+                .scale(colorScale)
+                .title("Reviewer Skin Type")
+                .labelOffset(15);
+
+            svg.append("g")
+                .attr("class", "legendOrdinal")
+                .attr("transform", `translate(${marginLeft}, ${height - 65})`)
+                .call(legendOrdinal);
+
+            document.getElementById("chart").appendChild(svg.node());
+        });
+    </script>
+
+    <hr>
+    <a href="/index.html">Go back to homepage</a>
+
+</body>
+</html>
