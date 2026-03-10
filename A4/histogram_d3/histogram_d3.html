@@ -87,7 +87,7 @@
         .style("pointer-events", "none")
         .style("opacity", 0);
 
-        d3.csv("/A4/data/reviews_750-1250.csv").then(rawData => {
+        d3.csv("/A4/data/reviews_1250-end.csv").then(rawData => {
 
         // Pull out review lengths, cap at 2000
         const data = rawData

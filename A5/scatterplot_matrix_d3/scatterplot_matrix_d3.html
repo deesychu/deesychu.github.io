@@ -95,7 +95,7 @@
         .style("pointer-events", "none")
         .style("opacity", 0);
 
-        d3.csv("/A5/data/reviews_750-1250.csv").then(rawData => {
+        d3.csv("/A5/data/reviews_1250-end.csv").then(rawData => {
 
         // Clean and cap data so outliers don't squash the dots
         const allData = rawData

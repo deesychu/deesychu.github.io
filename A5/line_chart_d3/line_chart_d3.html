@@ -101,7 +101,7 @@
         // Parse YYYY-MM-DD
         const parseDate = d3.timeParse("%Y-%m-%d");
 
-        d3.csv("/A5/data/reviews_750-1250.csv").then(rawData => {
+        d3.csv("/A5/data/reviews_1250-end.csv").then(rawData => {
 
         // Filter to 2016+ and valid rows only
         const filtered = rawData.filter(d =>
