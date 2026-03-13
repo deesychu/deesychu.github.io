@@ -78,7 +78,7 @@
         const marginLeft = 160;
         const width = 928;
 
-        d3.csv("/A4/data/reviews_1250-end.csv").then(data => {
+        d3.csv("/A4/data/compressed_file2.csv").then(data => {
 
         // Aggregate average rating per brand (200+ reviews only)
         const brandGroups = d3.rollup(

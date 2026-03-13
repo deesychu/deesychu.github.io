@@ -95,7 +95,7 @@
         .style("pointer-events", "none")
         .style("opacity", 0);
 
-        d3.csv("/A5/data/reviews_1250-end.csv").then(rawData => {
+        d3.csv("/A5/data/compressed_file2.csv").then(rawData => {
 
         // Clean and cap data so outliers don't squash the dots
         const allData = rawData
@@ -280,6 +280,9 @@
         document.getElementById("chart").appendChild(svg.node());
         });
     </script>
+
+    <hr>
+        <a href="/index.html">Go back to homepage</a>
 
 </body>
 </html>

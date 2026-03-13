@@ -90,7 +90,7 @@
         .style("pointer-events", "none")
         .style("opacity", 0);
 
-        d3.csv("/A4/data/reviews_1250-end.csv").then(rawData => {
+        d3.csv("/A4/data/compressed_file2.csv").then(rawData => {
         // Treat brunette as brown before grouping
         rawData.forEach(d => {
             if (d.hair_color === "brunette") d.hair_color = "brown";

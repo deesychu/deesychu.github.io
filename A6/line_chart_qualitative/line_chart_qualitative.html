@@ -91,7 +91,7 @@
         const HAIR_COLORS = ["black", "blonde", "brown", "auburn"];
         const YEARS       = ["2017", "2018", "2019", "2020", "2021", "2022", "2023"];
 
-        d3.csv("/A6/data/reviews_1250-end.csv").then(rawData => {
+        d3.csv("/A6/data/compressed_file2.csv").then(rawData => {
             const filtered = rawData.filter(d =>
                 d.hair_color &&
                 HAIR_COLORS.includes(d.hair_color) &&
