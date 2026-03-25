@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Streamgraph</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-legend/2.25.6/d3-legend.min.js"></script>
+    <style>
+        body {
+            font-family: Georgia, serif;
+            background-color: #fff0f5;
+            color: #5a2a3a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            font-size: 1.6rem;
+            margin-bottom: 8px;
+            color: #c2185b;
+        }
+
+        p.subtitle {
+            font-size: 0.95rem;
+            color: #a0566b;
+            margin-bottom: 32px;
+            text-align: center;
+            max-width: 700px;
+        }
+
+        #chart {
+            background: #fff;
+            border: 1.5px solid #f8bbd0;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 16px rgba(194, 24, 91, 0.08);
+        }
+
+        .tick text {
+            fill: #7b3a52;
+            font-size: 0.75rem;
+            font-family: Georgia, serif;
+        }
+
+        .domain { stroke: #f8bbd0; }
+
+        .axis-label {
+            fill: #a0566b;
+            font-size: 0.85rem;
+            font-family: Georgia, serif;
+        }
+
+        .stream-path {
+            transition: opacity 0.2s ease;
+        }
+
+        .stream-path:hover {
+            opacity: 1 !important;
+            cursor: pointer;
+        }
+
+        .legendOrdinal text {
+            fill: #5a2a3a;
+            font-family: Georgia, serif;
+            font-size: 13px;
+        }
+
+        #tooltip {
+            position: absolute;
+            pointer-events: none;
+            background: #fff;
+            border: 1.5px solid #f8bbd0;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-family: Georgia, serif;
+            font-size: 0.8rem;
+            color: #5a2a3a;
+            box-shadow: 0 4px 12px rgba(194, 24, 91, 0.1);
+            opacity: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Sephora Review Volume by Skin Tone Over Time</h1>
+    <p class="subtitle">
+        Streamgraph showing how many reviews were submitted each year (2017–2023)
+        by reviewers of each skin tone using a <strong>Qualitative Pastel1 (ColorBrewer)</strong> color scale. <em>Hover over a stream to highlight it and see the review count.</em>
+    </p>
+    <div id="chart"></div>
+    <div id="tooltip"></div>
+
+    <!--
+        References:
+        - D3 streamgraph: https://observablehq.com/@d3/streamgraph
+        - d3.stack with wiggle offset: https://d3js.org/d3-shape/stack#stackOffsetWiggle
+        - Qualitative color scale Pastel1 (ColorBrewer): https://colorbrewer2.org/#type=qualitative&scheme=Pastel1
+        - d3-legend by Susie Lu: https://d3-legend.susielu.com/
+    -->
+
+    <script>
+        // Chart dimensions
+        const width        = 820;
+        const height       = 520;
+        const marginTop    = 20;
+        const marginRight  = 30;
+        const marginBottom = 130;
+        const marginLeft   = 50;
+
+        const SKIN_TONES = ["fair", "light", "lightMedium", "medium", "mediumTan", "tan"];
+        const YEARS      = ["2017", "2018", "2019", "2020", "2021", "2022", "2023"];
+
+        const tooltip = d3.select("#tooltip");
+
+        d3.csv("/A7/data/compressed_file2.csv").then(rawData => {
+
+            // Filter to valid rows with known skin tone and year in range
+            const filtered = rawData.filter(d =>
+                d.skin_tone &&
+                SKIN_TONES.includes(d.skin_tone) &&
+                d.submission_time &&
+                YEARS.includes(d.submission_time.slice(0, 4))
+            );
+
+            // Aggregate: count reviews per (year, skin_tone)
+            const rollup = d3.rollup(
+                filtered,
+                v => v.length,
+                d => d.submission_time.slice(0, 4),
+                d => d.skin_tone
+            );
+
+            // Build flat row-per-year format
+            const stackData = YEARS.map(yr => {
+                const row = { year: yr };
+                SKIN_TONES.forEach(st => {
+                    row[st] = (rollup.get(yr) && rollup.get(yr).get(st)) ?? 0;
+                });
+                return row;
+            });
+
+            const stack = d3.stack()
+                .keys(SKIN_TONES)
+                .offset(d3.stackOffsetWiggle)
+                .order(d3.stackOrderInsideOut);
+
+            const layers = stack(stackData);
+
+            // X scale — years as band
+            const x = d3.scalePoint()
+                .domain(YEARS)
+                .range([marginLeft, width - marginRight])
+                .padding(0.5);
+
+            // Y scale — auto-fit the wiggle extent
+            const yMin = d3.min(layers, layer => d3.min(layer, d => d[0]));
+            const yMax = d3.max(layers, layer => d3.max(layer, d => d[1]));
+            const y = d3.scaleLinear()
+                .domain([yMin, yMax])
+                .range([height - marginBottom, marginTop]);
+
+            const colorScale = d3.scaleOrdinal()
+                .domain(SKIN_TONES)
+                .range(d3.schemePastel1);
+
+            // Area generator for each stream layer
+            const area = d3.area()
+                .x((d, i) => x(YEARS[i]))
+                .y0(d => y(d[0]))
+                .y1(d => y(d[1]))
+                .curve(d3.curveBasis);
+
+            const svg = d3.create("svg")
+                .attr("width",   width)
+                .attr("height",  height)
+                .attr("viewBox", [0, 0, width, height])
+                .attr("style",   "max-width: 100%; height: auto;");
+
+            // X-axis
+            svg.append("g")
+                .attr("transform", `translate(0,${height - marginBottom})`)
+                .call(d3.axisBottom(x).tickSizeOuter(0))
+                .call(g => g.select(".domain").attr("stroke", "#f8bbd0"))
+                .call(g => g.append("text")
+                    .attr("class", "axis-label")
+                    .attr("x", (width - marginLeft - marginRight) / 2 + marginLeft)
+                    .attr("y", 38)
+                    .attr("text-anchor", "middle")
+                    .text("Year of Review Submission"));
+
+            // Stream paths — one per skin tone
+            svg.append("g")
+                .selectAll("path.stream-path")
+                .data(layers)
+                .join("path")
+                .attr("class",        "stream-path")
+                .attr("fill",         d => colorScale(d.key))
+                .attr("opacity",      0.85)
+                .attr("stroke",       "#fff")
+                .attr("stroke-width", 0.5)
+                .attr("d",            area)
+                .on("mouseover", function(event, d) {
+                    d3.selectAll(".stream-path").attr("opacity", 0.25);
+                    d3.select(this).attr("opacity", 1);
+                    tooltip.style("opacity", 1);
+                })
+                .on("mousemove", function(event, d) {
+                    const [mouseX] = d3.pointer(event, svg.node());
+                    const xPositions = YEARS.map(yr => x(yr));
+                    let closestIdx = 0;
+                    let minDist = Infinity;
+                    xPositions.forEach((px, i) => {
+                        const dist = Math.abs(mouseX - px);
+                        if (dist < minDist) { minDist = dist; closestIdx = i; }
+                    });
+                    const yr    = YEARS[closestIdx];
+                    const count = stackData[closestIdx][d.key];
+
+                    tooltip
+                        .style("left",  (event.pageX + 12) + "px")
+                        .style("top",   (event.pageY - 28) + "px")
+                        .html(`<strong>${d.key}</strong><br/>Year: ${yr}<br/>Reviews: ${d3.format(",")(count)}`);
+                })
+                .on("mouseout", function() {
+                    d3.selectAll(".stream-path").attr("opacity", 0.85);
+                    tooltip.style("opacity", 0);
+                });
+
+            // QUALITATIVE COLOR LEGEND using Susie Lu's d3-legend
+            const legendOrdinal = d3.legendColor()
+                .shape("circle")
+                .shapeRadius(7)
+                .shapePadding(120)
+                .orient("horizontal")
+                .scale(colorScale)
+                .title("Reviewer Skin Tone")
+                .labelOffset(12);
+
+            svg.append("g")
+                .attr("class", "legendOrdinal")
+                .attr("transform", `translate(${marginLeft}, ${height - 75})`)
+                .call(legendOrdinal);
+
+            document.getElementById("chart").appendChild(svg.node());
+        });
+    </script>
+
+    <hr>
+    <a href="/index.html">Go back to homepage</a>
+
+</body>
+</html>

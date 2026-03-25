@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Small Multiples – Avg Rating by Eye Color & Skin Type</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-legend/2.25.6/d3-legend.min.js"></script>
+    <style>
+        body {
+            font-family: Georgia, serif;
+            background-color: #fff0f5;
+            color: #5a2a3a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            font-size: 1.6rem;
+            margin-bottom: 8px;
+            color: #c2185b;
+        }
+
+        p.subtitle {
+            font-size: 0.95rem;
+            color: #a0566b;
+            margin-bottom: 32px;
+            text-align: center;
+            max-width: 760px;
+        }
+
+        #chart-container {
+            background: #fff;
+            border: 1.5px solid #f8bbd0;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 16px rgba(194, 24, 91, 0.08);
+        }
+
+        .panel-title {
+            font-family: Georgia, serif;
+            font-size: 0.82rem;
+            font-style: italic;
+            fill: #c2185b;
+            font-weight: bold;
+        }
+
+        .tick text {
+            fill: #7b3a52;
+            font-size: 0.65rem;
+            font-family: Georgia, serif;
+        }
+
+        .domain {
+            stroke: #f8bbd0;
+        }
+
+        .axis-label {
+            fill: #a0566b;
+            font-size: 0.78rem;
+            font-family: Georgia, serif;
+        }
+
+        .shared-axis-label {
+            fill: #a0566b;
+            font-size: 0.85rem;
+            font-family: Georgia, serif;
+        }
+
+        .legendOrdinal text {
+            fill: #5a2a3a;
+            font-family: Georgia, serif;
+            font-size: 13px;
+        }
+
+        /* Simple tooltip */
+        #tooltip {
+            position: absolute;
+            pointer-events: none;
+            background: #fff;
+            border: 1.5px solid #f8bbd0;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-family: Georgia, serif;
+            font-size: 0.8rem;
+            color: #5a2a3a;
+            box-shadow: 0 4px 12px rgba(194, 24, 91, 0.1);
+            opacity: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Avg. Star Rating by Eye Color Over Time</h1>
+    <p class="subtitle">
+        Small multiples — one panel per <strong>skin type</strong>, each showing
+        four lines for <strong>eye color</strong> (2018–2022) using a
+        <strong>Qualitative Pastel1 (ColorBrewer)</strong> scale. Hover over a dot to see the exact value.
+    </p>
+
+    <div id="chart-container"></div>
+    <div id="tooltip"></div>
+
+    <!--
+        References:
+        - Qualitative color scale Pastel1 (ColorBrewer): https://colorbrewer2.org/#type=qualitative&scheme=Pastel1
+        - d3-legend by Susie Lu: https://d3-legend.susielu.com/
+    -->
+
+    <script>
+        // Dimensions
+        const panelW      = 340;
+        const panelH      = 220;
+        const panelPadX   = 60;
+        const panelPadY   = 60;
+        const cols        = 2;
+        const rows        = 2;
+
+        const mTop    = 30;
+        const mRight  = 15;
+        const mBottom = 40;
+        const mLeft   = 42;
+
+        const legendH  = 80;
+        const totalW   = cols * panelW + (cols - 1) * panelPadX + 40;
+        const totalH   = rows * panelH + (rows - 1) * panelPadY + legendH + 20;
+
+        const SKIN_TYPES = ["combination", "dry", "normal", "oily"];
+        const EYE_COLORS = ["green", "brown", "blue", "hazel"];
+        const YEARS      = ["2018", "2019", "2020", "2021", "2022"];
+
+        const tooltip = d3.select("#tooltip");
+
+        d3.csv("/A7/data/compressed_file2.csv").then(rawData => {
+
+            // Filter valid rows
+            const filtered = rawData.filter(d =>
+                d.skin_type && SKIN_TYPES.includes(d.skin_type) &&
+                d.eye_color && EYE_COLORS.includes(d.eye_color) &&
+                d.submission_time && YEARS.includes(d.submission_time.slice(0, 4)) &&
+                d.rating !== ""
+            );
+
+            // Aggregate: avg rating per (skin_type, year, eye_color)
+            const rollup = d3.rollup(
+                filtered,
+                v => d3.mean(v, d => +d.rating),
+                d => d.skin_type,
+                d => d.submission_time.slice(0, 4),
+                d => d.eye_color
+            );
+
+            // Build series: one entry per skin_type and eye_color
+            const panelData = SKIN_TYPES.map(st => ({
+                skin_type: st,
+                series: EYE_COLORS.map(ec => ({
+                    eye_color: ec,
+                    values: YEARS.map(yr => ({
+                        year:      yr,
+                        eye_color: ec,
+                        skin_type: st,
+                        avg: (rollup.get(st) && rollup.get(st).get(yr) && rollup.get(st).get(yr).get(ec)) ?? null
+                    })).filter(d => d.avg !== null)
+                }))
+            }));
+
+            // Shared X scale
+            const x = d3.scalePoint()
+                .domain(YEARS)
+                .range([mLeft, panelW - mRight])
+                .padding(0.3);
+
+            // Shared Y scale
+            const allAvgs = panelData.flatMap(p =>
+                p.series.flatMap(s => s.values.map(d => d.avg))
+            );
+            const y = d3.scaleLinear()
+                .domain([d3.min(allAvgs) * 0.98, d3.max(allAvgs) * 1.01]).nice()
+                .range([panelH - mBottom, mTop]);
+
+            const colorScale = d3.scaleOrdinal()
+                .domain(EYE_COLORS)
+                .range(d3.schemePastel1);
+
+            // Line generator (shared)
+            const line = d3.line()
+                .x(d => x(d.year))
+                .y(d => y(d.avg))
+                .curve(d3.curveMonotoneX);
+
+            const svg = d3.create("svg")
+                .attr("width",   totalW)
+                .attr("height",  totalH)
+                .attr("viewBox", [0, 0, totalW, totalH])
+                .attr("style",   "max-width: 100%; height: auto;");
+
+            // Draw each panel
+            panelData.forEach((panel, i) => {
+                const col = i % cols;
+                const row = Math.floor(i / cols);
+                const tx  = col * (panelW + panelPadX) + 20;   // panel x offset
+                const ty  = row * (panelH + panelPadY) + 10;   // panel y offset
+
+                const g = svg.append("g")
+                    .attr("transform", `translate(${tx},${ty})`);
+
+                // Panel background
+                g.append("rect")
+                    .attr("x",      0)
+                    .attr("y",      0)
+                    .attr("width",  panelW)
+                    .attr("height", panelH)
+                    .attr("fill",   "#fff8fb")
+                    .attr("rx",     8)
+                    .attr("stroke", "#f8bbd0")
+                    .attr("stroke-width", 1);
+
+                // Panel title (skin type)
+                g.append("text")
+                    .attr("class", "panel-title")
+                    .attr("x", panelW / 2)
+                    .attr("y", 16)
+                    .attr("text-anchor", "middle")
+                    .text(panel.skin_type);
+
+                // Horizontal gridlines inside panel
+                g.append("g")
+                    .attr("transform", `translate(${mLeft},0)`)
+                    .call(
+                        d3.axisLeft(y)
+                            .ticks(4)
+                            .tickSize(-(panelW - mLeft - mRight))
+                            .tickFormat("")
+                    )
+                    .call(gg => gg.select(".domain").remove())
+                    .call(gg => gg.selectAll(".tick line")
+                        .attr("stroke", "#f8bbd0")
+                        .attr("stroke-opacity", 0.7));
+
+                // X-axis
+                g.append("g")
+                    .attr("transform", `translate(0,${panelH - mBottom})`)
+                    .call(d3.axisBottom(x).tickSizeOuter(0))
+                    .call(gg => gg.select(".domain").attr("stroke", "#f8bbd0"));
+
+                // Y-axis
+                g.append("g")
+                    .attr("transform", `translate(${mLeft},0)`)
+                    .call(d3.axisLeft(y).ticks(4).tickFormat(d3.format(".1f")))
+                    .call(gg => gg.select(".domain").remove());
+
+                // Draw one line per eye color
+                panel.series.forEach(s => {
+                    g.append("path")
+                        .datum(s.values)
+                        .attr("fill",            "none")
+                        .attr("stroke",          colorScale(s.eye_color))
+                        .attr("stroke-width",    2)
+                        .attr("stroke-linejoin", "round")
+                        .attr("stroke-linecap",  "round")
+                        .attr("d",               line);
+                });
+
+                // Draw dots with tooltips
+                panel.series.forEach(s => {
+                    g.selectAll(`.dot-${s.eye_color}`)
+                        .data(s.values)
+                        .join("circle")
+                        .attr("cx",           d => x(d.year))
+                        .attr("cy",           d => y(d.avg))
+                        .attr("r",            4)
+                        .attr("fill",         colorScale(s.eye_color))
+                        .attr("stroke",       "#c2185b")
+                        .attr("stroke-width", 0.7)
+                        .on("mouseover", function(event, d) {
+                            tooltip
+                                .style("opacity", 1)
+                                .html(
+                                    `<strong>${d.eye_color} eyes</strong><br/>` +
+                                    `Skin: ${d.skin_type}<br/>` +
+                                    `Year: ${d.year}<br/>` +
+                                    `Avg Rating: ${d.avg.toFixed(2)} ★`
+                                );
+                            d3.select(this).attr("r", 7);
+                        })
+                        .on("mousemove", function(event) {
+                            tooltip
+                                .style("left", (event.pageX + 12) + "px")
+                                .style("top",  (event.pageY - 28) + "px");
+                        })
+                        .on("mouseout", function() {
+                            tooltip.style("opacity", 0);
+                            d3.select(this).attr("r", 4);
+                        });
+                });
+            });
+
+            // Shared Y-axis label
+            svg.append("text")
+                .attr("class", "shared-axis-label")
+                .attr("transform", "rotate(-90)")
+                .attr("x", -(rows * panelH + (rows - 1) * panelPadY) / 2 - 10)
+                .attr("y", 10)
+                .attr("text-anchor", "middle")
+                .text("Avg. Star Rating (1–5)");
+
+            // Shared X-axis label
+            svg.append("text")
+                .attr("class", "shared-axis-label")
+                .attr("x", totalW / 2)
+                .attr("y", rows * panelH + (rows - 1) * panelPadY + 30)
+                .attr("text-anchor", "middle")
+                .text("Year of Review Submission");
+
+            // QUALITATIVE COLOR LEGEND using Susie Lu's d3-legend
+            const legendOrdinal = d3.legendColor()
+                .shape("circle")
+                .shapeRadius(7)
+                .shapePadding(120)
+                .orient("horizontal")
+                .scale(colorScale)
+                .title("Reviewer Eye Color")
+                .labelOffset(15);
+
+            svg.append("g")
+                .attr("class", "legendOrdinal")
+                .attr("transform", `translate(${totalW / 2 - 220}, ${rows * panelH + (rows - 1) * panelPadY + 50})`)
+                .call(legendOrdinal);
+
+            document.getElementById("chart-container").appendChild(svg.node());
+        });
+    </script>
+
+    <hr>
+    <a href="/index.html">Go back to homepage</a>
+
+</body>
+</html>
