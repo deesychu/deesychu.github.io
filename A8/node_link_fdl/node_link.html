@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Node-Link Diagram – Tribes Social Network</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        body {
+            font-family: Georgia, serif;
+            background-color: #fff0f5;
+            color: #5a2a3a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            font-size: 1.6rem;
+            margin-bottom: 8px;
+            color: #c2185b;
+        }
+
+        p.subtitle {
+            font-size: 0.95rem;
+            color: #a0566b;
+            margin-bottom: 32px;
+            text-align: center;
+            max-width: 700px;
+        }
+
+        #chart {
+            background: #fff;
+            border: 1.5px solid #f8bbd0;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 16px rgba(194, 24, 91, 0.08);
+        }
+
+        .legend {
+            display: flex;
+            gap: 32px;
+            justify-content: center;
+            margin-top: 20px;
+            font-size: 0.85rem;
+            color: #5a2a3a;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-line {
+            width: 36px;
+            height: 3px;
+            border-radius: 2px;
+        }
+
+        #tooltip {
+            position: absolute;
+            pointer-events: none;
+            background: #fff;
+            border: 1.5px solid #f8bbd0;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-family: Georgia, serif;
+            font-size: 0.8rem;
+            color: #5a2a3a;
+            box-shadow: 0 4px 12px rgba(194, 24, 91, 0.1);
+            opacity: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Requirement B: Edge bundling for the node-link diagram -->
+
+    <h1>Node-Link Diagram – Tribes Social Network</h1>
+    <p class="subtitle">
+        Force-directed node-link diagram with edge bundling. Bigger nodes have more connections. Hover a node to highlight its connections. Drag nodes to rearrange.
+    </p>
+
+    <div id="chart"></div>
+
+    <div class="legend">
+        <div class="legend-item">
+            <div class="legend-line" style="background:#7fbf7b;"></div>
+            <span>Friendly relationship (+1)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-line" style="background:#e06c75;"></div>
+            <span>Hostile relationship (−1)</span>
+        </div>
+        <div class="legend-item">
+            <div style="display:flex; align-items:center; gap:4px;">
+                <div style="width:10px; height:10px; border-radius:50%; background:#b3cde3; border:1.5px solid #c2185b;"></div>
+                <span>Fewer connections</span>
+            </div>
+        </div>
+        <div class="legend-item">
+            <div style="display:flex; align-items:center; gap:4px;">
+                <div style="width:20px; height:20px; border-radius:50%; background:#b3cde3; border:1.5px solid #c2185b;"></div>
+                <span>More connections</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="tooltip"></div>
+
+    <!--
+        References:
+        - D3 force-directed graph: https://observablehq.com/@d3/force-directed-graph
+        - Edge bundling (quadratic bezier): https://mbostock.github.io/d3/talk/20111116/bundle.html & https://vega.github.io/vega/examples/edge-bundling/
+        - Dataset: http://networkrepository.com/soc-tribes.php
+    -->
+
+    <script>
+        const width  = 760;
+        const height = 580;
+
+        // Center point
+        const cx = width  / 2;
+        const cy = height / 2;
+
+        const tooltip = d3.select("#tooltip");
+
+        d3.csv("/A8/data/soc_tribes.csv").then(rawData => {
+
+            // Parse edges, skip the comment row where Source = "%"
+            const edges = [];
+            rawData.forEach(row => {
+                const s = +row.Source;
+                const t = +row.Target;
+                const w = +row.Weight;
+                if (!isNaN(s) && !isNaN(t) && !isNaN(w)) {
+                    edges.push({ source: s, target: t, weight: w });
+                }
+            });
+
+            // Count connections per node (degree)
+            const degreeMap = {};
+            edges.forEach(e => {
+                degreeMap[e.source] = (degreeMap[e.source] || 0) + 1;
+                degreeMap[e.target] = (degreeMap[e.target] || 0) + 1;
+            });
+
+            // Build node list with degree attached
+            const nodeIds = new Set();
+            edges.forEach(e => { nodeIds.add(e.source); nodeIds.add(e.target); });
+            const nodes = Array.from(nodeIds).map(id => ({
+                id,
+                degree: degreeMap[id] || 1
+            }));
+
+            // Node radius scaled by degree
+            const radiusScale = d3.scaleLinear()
+                .domain([d3.min(nodes, d => d.degree), d3.max(nodes, d => d.degree)])
+                .range([10, 22]);
+
+            // Edge color by relationship
+            const edgeColor = weight => weight === 1 ? "#7fbf7b" : "#e06c75";
+
+            // SVG
+            const svg = d3.create("svg")
+                .attr("width",   width)
+                .attr("height",  height)
+                .attr("viewBox", [0, 0, width, height])
+                .attr("style",   "max-width: 100%; height: auto; cursor: grab;");
+
+            // Force simulation
+            const simulation = d3.forceSimulation(nodes)
+                .force("link",    d3.forceLink(edges).id(d => d.id).distance(120))
+                .force("charge",  d3.forceManyBody().strength(-350))
+                .force("center",  d3.forceCenter(cx, cy))
+                .force("collide", d3.forceCollide(d => radiusScale(d.degree) + 6));
+
+            // REQUIREMENT A: EDGE BUNDLING
+            const bundlingStrength = 0.5;
+
+            // Draw edges as curved
+            const link = svg.append("g")
+                .selectAll("path")
+                .data(edges)
+                .join("path")
+                .attr("fill", "none")
+                .attr("stroke", d => edgeColor(d.weight))
+                .attr("stroke-width", 1.8)
+                .attr("stroke-opacity", 0.6);
+
+            // Build the curved path for one edge
+            function buildPath(d) {
+                const sx = d.source.x, sy = d.source.y;
+                const tx = d.target.x, ty = d.target.y;
+
+                // Midpoint between the two nodes
+                const midX = (sx + tx) / 2;
+                const midY = (sy + ty) / 2;
+
+                // Pull the midpoint toward the graph center by bundlingStrength
+                const cpX = midX + (cx - midX) * bundlingStrength;
+                const cpY = midY + (cy - midY) * bundlingStrength;
+
+                return `M${sx},${sy} Q${cpX},${cpY} ${tx},${ty}`;
+            }
+
+            // Draw nodes on top of edges
+            const node = svg.append("g")
+                .selectAll("circle")
+                .data(nodes)
+                .join("circle")
+                .attr("r", d => radiusScale(d.degree))
+                .attr("fill", "#b3cde3")
+                .attr("stroke", "#c2185b")
+                .attr("stroke-width", 1.5)
+                .attr("opacity", 0.9)
+                .call(d3.drag()
+                    .on("start", dragStart)
+                    .on("drag",  dragging)
+                    .on("end",   dragEnd)
+                )
+                .on("mouseover", function(event, d) {
+                    const connected = edges.filter(e =>
+                        e.source.id === d.id || e.target.id === d.id
+                    );
+                    const friendly = connected.filter(e => e.weight ===  1).length;
+                    const hostile  = connected.filter(e => e.weight === -1).length;
+
+                    tooltip
+                        .style("opacity", 1)
+                        .html(`<strong>Tribe ${d.id}</strong><br/>Connections: ${d.degree} (${friendly} friendly, ${hostile} hostile)`);
+
+                    node.attr("opacity", n => n.id === d.id ? 1 : 0.2);
+                    link.attr("stroke-opacity", e =>
+                        e.source.id === d.id || e.target.id === d.id ? 1 : 0.05
+                    );
+                    d3.select(this).attr("fill", "#decbe4");
+                })
+                .on("mousemove", function(event) {
+                    tooltip
+                        .style("left", (event.pageX + 12) + "px")
+                        .style("top",  (event.pageY - 28) + "px");
+                })
+                .on("mouseout", function() {
+                    tooltip.style("opacity", 0);
+                    node.attr("opacity", 0.9).attr("fill", "#b3cde3");
+                    link.attr("stroke-opacity", 0.6);
+                });
+
+            // Node labels
+            const label = svg.append("g")
+                .selectAll("text")
+                .data(nodes)
+                .join("text")
+                .attr("text-anchor",       "middle")
+                .attr("dominant-baseline", "middle")
+                .attr("font-family",       "Georgia, serif")
+                .attr("font-size",         "0.65rem")
+                .attr("fill",              "#5a2a3a")
+                .attr("pointer-events",    "none")
+                .text(d => d.id);
+
+            // Every simulation tick: rebuild curved paths + reposition nodes & labels
+            simulation.on("tick", () => {
+                link.attr("d", buildPath);
+
+                node
+                    .attr("cx", d => d.x)
+                    .attr("cy", d => d.y);
+
+                label
+                    .attr("x", d => d.x)
+                    .attr("y", d => d.y);
+            });
+
+            // Drag functions
+            function dragStart(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+            function dragging(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+            function dragEnd(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+
+            document.getElementById("chart").appendChild(svg.node());
+        });
+    </script>
+
+    <hr>
+    <a href="/index.html">Go back to homepage</a>
+
+</body>
+</html>

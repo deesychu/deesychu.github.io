@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Adjacency Matrix – Tribes Social Network</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        body {
+            font-family: Georgia, serif;
+            background-color: #fff0f5;
+            color: #5a2a3a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            font-size: 1.6rem;
+            margin-bottom: 8px;
+            color: #c2185b;
+        }
+
+        p.subtitle {
+            font-size: 0.95rem;
+            color: #a0566b;
+            margin-bottom: 32px;
+            text-align: center;
+            max-width: 700px;
+        }
+
+        #chart {
+            background: #fff;
+            border: 1.5px solid #f8bbd0;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 16px rgba(194, 24, 91, 0.08);
+        }
+
+        .cell {
+            cursor: pointer;
+        }
+
+        .tick text {
+            font-family: Georgia, serif;
+            font-size: 0.72rem;
+            fill: #7b3a52;
+        }
+
+        .legend {
+            display: flex;
+            gap: 28px;
+            justify-content: center;
+            margin-top: 20px;
+            font-size: 0.85rem;
+            color: #5a2a3a;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-swatch {
+            width: 18px;
+            height: 18px;
+            border-radius: 3px;
+            border: 1px solid #f8bbd0;
+        }
+
+        #tooltip {
+            position: absolute;
+            pointer-events: none;
+            background: #fff;
+            border: 1.5px solid #f8bbd0;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-family: Georgia, serif;
+            font-size: 0.8rem;
+            color: #5a2a3a;
+            box-shadow: 0 4px 12px rgba(194, 24, 91, 0.1);
+            opacity: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Adjacency Matrix – Tribes Social Network</h1>
+    <p class="subtitle">
+        Each row and column is a tribe (1–16). Each cell shows whether two tribes are friendly, hostile or unconnected. Hover any cell — the full row and column highlight to help you read the chart.
+    </p>
+
+    <div id="chart"></div>
+
+    <div class="legend">
+        <div class="legend-item">
+            <div class="legend-swatch" style="background:#ccebc5;"></div>
+            <span>Friendly (+1)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-swatch" style="background:#fbb4ae;"></div>
+            <span>Hostile (−1)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-swatch" style="background:#f5f5f5;"></div>
+            <span>No connection</span>
+        </div>
+    </div>
+
+    <div id="tooltip"></div>
+
+    <!--
+        References:
+        - Adjacency matrix in D3: https://flowingdata.com/2012/08/02/how-to-make-an-interactive-network-visualization/
+        - Dataset: http://networkrepository.com/soc-tribes.php
+    -->
+
+    <script>
+        // Margins and cell size
+        const margin    = { top: 80, right: 40, bottom: 20, left: 100 };
+        const nodeCount = 16;
+        const cellSize  = 32;
+
+        const gridW = nodeCount * cellSize;
+        const gridH = nodeCount * cellSize;
+        const width  = gridW + margin.left + margin.right;
+        const height = gridH + margin.top  + margin.bottom;
+
+        const NODES = d3.range(1, nodeCount + 1);
+
+        const tooltip = d3.select("#tooltip");
+
+        d3.csv("/A8/data/soc_tribes.csv").then(rawData => {
+
+            // Parse edges
+            const edges = [];
+            rawData.forEach(row => {
+                const s = +row.Source;
+                const t = +row.Target;
+                const w = +row.Weight;
+                if (!isNaN(s) && !isNaN(t) && !isNaN(w)) {
+                    edges.push({ source: s, target: t, weight: w });
+                }
+            });
+
+            // Build adjacency matrix lookup — undirected so mirror both sides
+            const matrix = {};
+            NODES.forEach(i => {
+                matrix[i] = {};
+                NODES.forEach(j => { matrix[i][j] = 0; });
+            });
+            edges.forEach(e => {
+                matrix[e.source][e.target] = e.weight;
+                matrix[e.target][e.source] = e.weight;
+            });
+
+            // Flatten matrix into one cell object per (row, col) pair
+            const cells = [];
+            NODES.forEach(i => {
+                NODES.forEach(j => {
+                    cells.push({ row: i, col: j, weight: matrix[i][j] });
+                });
+            });
+
+            // Cell color by relationship
+            function cellFill(weight) {
+                if (weight ===  1) return "#ccebc5";
+                if (weight === -1) return "#fbb4ae";
+                return "#f5f5f5";
+            }
+
+            // SVG
+            const svg = d3.create("svg")
+                .attr("width",   width)
+                .attr("height",  height)
+                .attr("viewBox", [0, 0, width, height])
+                .attr("style",   "max-width: 100%; height: auto;");
+
+            const g = svg.append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            // REQUIREMENT A: x- and y-direction highlight bars
+            const rowHighlight = g.append("rect")
+                .attr("class",   "row-highlight")
+                .attr("x",       0)
+                .attr("width",   gridW)
+                .attr("height",  cellSize)
+                .attr("fill",    "#fff0f5")
+                .attr("opacity", 0)
+                .attr("pointer-events", "none");
+
+            const colHighlight = g.append("rect")
+                .attr("class",   "col-highlight")
+                .attr("y",       0)
+                .attr("width",   cellSize)
+                .attr("height",  gridH)
+                .attr("fill",    "#fff0f5")
+                .attr("opacity", 0)
+                .attr("pointer-events", "none");
+
+            // Row labels (left)
+            g.selectAll("text.row-label")
+                .data(NODES)
+                .join("text")
+                .attr("class",             "row-label tick")
+                .attr("x",                 -8)
+                .attr("y",                 d => (d - 1) * cellSize + cellSize / 2)
+                .attr("text-anchor",       "end")
+                .attr("dominant-baseline", "middle")
+                .text(d => `Tribe ${d}`);
+
+            // Column labels (top, rotated −45°)
+            g.selectAll("text.col-label")
+                .data(NODES)
+                .join("text")
+                .attr("class",             "col-label tick")
+                .attr("x",                 d => (d - 1) * cellSize + cellSize / 2)
+                .attr("y",                 -8)
+                .attr("text-anchor",       "start")
+                .attr("dominant-baseline", "middle")
+                .attr("transform", d => {
+                    const x = (d - 1) * cellSize + cellSize / 2;
+                    return `rotate(-45, ${x}, -8)`;
+                })
+                .text(d => `Tribe ${d}`);
+
+            // Draw all cells
+            g.selectAll("rect.cell")
+                .data(cells)
+                .join("rect")
+                .attr("class",  "cell")
+                .attr("x",      d => (d.col - 1) * cellSize)
+                .attr("y",      d => (d.row - 1) * cellSize)
+                .attr("width",  cellSize - 1)
+                .attr("height", cellSize - 1)
+                .attr("rx",     2)
+                .attr("fill",   d => cellFill(d.weight))
+                .on("mouseover", function(event, d) {
+                    if (d.row === d.col) {
+                        tooltip.style("opacity", 0);
+                    } else {
+                        let rel = "No connection";
+                        if (d.weight ===  1) rel = "Friendly (+1)";
+                        if (d.weight === -1) rel = "Hostile (−1)";
+                        tooltip
+                            .style("opacity", 1)
+                            .html(`<strong>Tribe ${d.row} – Tribe ${d.col}</strong><br/>${rel}`);
+                    }
+
+                    // Move and show the row highlight bar
+                    rowHighlight
+                        .attr("y",       (d.row - 1) * cellSize)
+                        .attr("opacity", 0.5);
+
+                    // Move and show the col highlight bar
+                    colHighlight
+                        .attr("x",       (d.col - 1) * cellSize)
+                        .attr("opacity", 0.5);
+
+                    // Dim all cells not in the hovered row or column
+                    g.selectAll("rect.cell")
+                        .attr("opacity", c => (c.row === d.row || c.col === d.col) ? 1 : 0.15);
+
+                    // Bold the matching row and column labels
+                    g.selectAll("text.row-label")
+                        .attr("font-weight", n => n === d.row ? "bold" : "normal")
+                        .attr("fill",        n => n === d.row ? "#c2185b" : "#7b3a52");
+
+                    g.selectAll("text.col-label")
+                        .attr("font-weight", n => n === d.col ? "bold" : "normal")
+                        .attr("fill",        n => n === d.col ? "#c2185b" : "#7b3a52");
+
+                    // Outline the hovered cell
+                    d3.select(this)
+                        .attr("stroke",       "#c2185b")
+                        .attr("stroke-width", 2);
+                })
+                .on("mousemove", function(event) {
+                    tooltip
+                        .style("left", (event.pageX + 12) + "px")
+                        .style("top",  (event.pageY - 28) + "px");
+                })
+                .on("mouseout", function() {
+                    // Restore all cell opacity
+                    g.selectAll("rect.cell").attr("opacity", 1);
+                    rowHighlight.attr("opacity", 0);
+                    colHighlight.attr("opacity", 0);
+
+                    // Reset all labels back to normal
+                    g.selectAll("text.row-label")
+                        .attr("font-weight", "normal")
+                        .attr("fill",        "#7b3a52");
+                    g.selectAll("text.col-label")
+                        .attr("font-weight", "normal")
+                        .attr("fill",        "#7b3a52");
+
+                    // Remove cell outline
+                    d3.select(this)
+                        .attr("stroke",       null)
+                        .attr("stroke-width", null);
+
+                    tooltip.style("opacity", 0);
+                });
+
+            // Diagonal slash (same-tribe cells)
+            g.selectAll("line.diagonal")
+                .data(NODES)
+                .join("line")
+                .attr("x1", d => (d - 1) * cellSize)
+                .attr("y1", d => (d - 1) * cellSize)
+                .attr("x2", d => (d - 1) * cellSize + cellSize - 1)
+                .attr("y2", d => (d - 1) * cellSize + cellSize - 1)
+                .attr("stroke",       "#c2185b")
+                .attr("stroke-width", 1)
+                .attr("opacity",      0.4)
+                .attr("pointer-events", "none");
+
+            document.getElementById("chart").appendChild(svg.node());
+        });
+    </script>
+
+    <hr>
+    <a href="/index.html">Go back to homepage</a>
+
+</body>
+</html>
