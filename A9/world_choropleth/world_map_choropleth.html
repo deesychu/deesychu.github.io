@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>World Choropleth – Life Expectancy 2023</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+
+    <style>
+        body {
+            font-family: Georgia, serif;
+            background-color: #fff0f5;
+            color: #5a2a3a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            font-size: 1.6rem;
+            margin-bottom: 8px;
+            color: #c2185b;
+        }
+
+        p.subtitle {
+            font-size: 0.95rem;
+            color: #a0566b;
+            margin-bottom: 32px;
+            text-align: center;
+            max-width: 720px;
+        }
+
+        #chart {
+            background: #fff;
+            border: 1.5px solid #f8bbd0;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 16px rgba(194, 24, 91, 0.08);
+        }
+
+        .country {
+            stroke: #fff;
+            stroke-width: 0.4px;
+            cursor: pointer;
+        }
+
+        .country:hover {
+            opacity: 0.75;
+            stroke: #c2185b;
+            stroke-width: 1px;
+        }
+
+        .graticule {
+            fill: none;
+            stroke: #cde8f0;
+            stroke-width: 0.4px;
+        }
+
+        .sphere {
+            fill: #ddf0f7;
+        }
+
+        #tooltip {
+            position: absolute;
+            pointer-events: none;
+            background: #fff;
+            border: 1.5px solid #f8bbd0;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-family: Georgia, serif;
+            font-size: 0.8rem;
+            color: #5a2a3a;
+            box-shadow: 0 4px 12px rgba(194, 24, 91, 0.1);
+            opacity: 0;
+        }
+
+        .legend-label {
+            font-family: Georgia, serif;
+            font-size: 0.72rem;
+            fill: #7b3a52;
+        }
+
+        .legend-title {
+            font-family: Georgia, serif;
+            font-size: 0.82rem;
+            fill: #a0566b;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Life Expectancy by Country (2023)</h1>
+    <p class="subtitle">
+        World choropleth showing average life expectancy for 187 countries. Hover over any country to see its details.
+    </p>
+
+    <div id="chart"></div>
+    <div id="tooltip"></div>
+
+    <div id="legend" style="
+        background: #fff;
+        border: 1.5px solid #f8bbd0;
+        border-radius: 10px;
+        padding: 10px 20px 6px 20px;
+        margin-top: 16px;
+        box-shadow: 0 4px 12px rgba(194, 24, 91, 0.06);
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+    ">
+        <span style="font-family: Georgia, serif; font-size: 0.82rem; color: #a0566b; margin-bottom: 2px;">
+            Life Expectancy (years)
+        </span>
+    </div>
+
+    <!--
+        References:
+        - D3 World Choropleth: https://observablehq.com/@d3/world-choropleth
+    -->
+
+    <script>
+        const width  = 1100;
+        const height = 580;
+
+        const tooltip = d3.select("#tooltip");
+
+        // Color scale
+        // Life expectancy ranges roughly 50–86 years in our dataset
+        const colorScale = d3.scaleSequential()
+            .domain([50, 86])
+            .interpolator(d3.interpolateRdPu);
+
+        // Natural Earth projection
+        const projection = d3.geoNaturalEarth1()
+            .scale(185)
+            .translate([width / 2, height / 2]);
+
+        const path = d3.geoPath().projection(projection);
+
+        // SVG
+        const svg = d3.create("svg")
+            .attr("width",   width)
+            .attr("height",  height)
+            .attr("viewBox", [0, 0, width, height])
+            .attr("style",   "max-width: 100%; height: auto;");
+
+        document.getElementById("chart").appendChild(svg.node());
+
+        // Ocean background
+        svg.append("path")
+            .datum({ type: "Sphere" })
+            .attr("class", "sphere")
+            .attr("d", path);
+
+        // Graticule grid lines
+        svg.append("path")
+            .datum(d3.geoGraticule()())
+            .attr("class", "graticule")
+            .attr("d", path);
+
+        // ISO numeric code lookup
+        const isoByName = {
+            "Afghanistan": 4, "Albania": 8, "Algeria": 12, "Andorra": 20, "Angola": 24,
+            "Antigua and Barbuda": 28, "Argentina": 32, "Armenia": 51, "Australia": 36,
+            "Austria": 40, "Azerbaijan": 31, "Bahamas": 44, "The Bahamas": 44,
+            "Bahrain": 48, "Bangladesh": 50, "Barbados": 52, "Belarus": 112,
+            "Belgium": 56, "Belize": 84, "Benin": 204, "Bhutan": 64,
+            "Bolivia": 68, "Bosnia and Herzegovina": 70, "Botswana": 72, "Brazil": 76,
+            "Brunei": 96, "Bulgaria": 100, "Burkina Faso": 854, "Burundi": 108,
+            "Cambodia": 116, "Cameroon": 120, "Canada": 124, "Cape Verde": 132,
+            "Central African Republic": 140, "Chad": 148, "Chile": 152, "China": 156,
+            "Colombia": 170, "Comoros": 174, "Republic of the Congo": 178,
+            "Democratic Republic of the Congo": 180,
+            "Costa Rica": 188, "Ivory Coast": 384, "Croatia": 191, "Cuba": 192,
+            "Cyprus": 196, "Czech Republic": 203, "Denmark": 208, "Djibouti": 262,
+            "Dominica": 212, "Dominican Republic": 214, "East Timor": 626,
+            "Ecuador": 218, "Egypt": 818, "El Salvador": 222,
+            "Equatorial Guinea": 226, "Eritrea": 232, "Estonia": 233,
+            "Eswatini": 748, "Ethiopia": 231, "Fiji": 242, "Finland": 246,
+            "France": 250, "Gabon": 266, "Gambia": 270, "The Gambia": 270,
+            "Georgia": 268, "Germany": 276, "Ghana": 288, "Greece": 300,
+            "Grenada": 308, "Guatemala": 320, "Guinea": 324, "Guinea-Bissau": 624,
+            "Guyana": 328, "Haiti": 332, "Honduras": 340, "Hungary": 348,
+            "Iceland": 352, "India": 356, "Indonesia": 360, "Iran": 364,
+            "Iraq": 368, "Ireland": 372, "Republic of Ireland": 372, "Israel": 376,
+            "Italy": 380, "Jamaica": 388, "Japan": 392, "Jordan": 400,
+            "Kazakhstan": 398, "Kenya": 404, "Kiribati": 296, "Kuwait": 414,
+            "Kyrgyzstan": 417, "Laos": 418, "Latvia": 428, "Lebanon": 422,
+            "Lesotho": 426, "Liberia": 430, "Libya": 434, "Liechtenstein": 438,
+            "Lithuania": 440, "Luxembourg": 442, "Madagascar": 450, "Malawi": 454,
+            "Malaysia": 458, "Maldives": 462, "Mali": 466, "Malta": 470,
+            "Marshall Islands": 584, "Mauritania": 478, "Mauritius": 480,
+            "Mexico": 484, "Micronesia": 583, "Federated States of Micronesia": 583,
+            "Moldova": 498, "Monaco": 492, "Mongolia": 496, "Montenegro": 499,
+            "Morocco": 504, "Mozambique": 508, "Myanmar": 104, "Namibia": 516,
+            "Nepal": 524, "Netherlands": 528, "New Zealand": 554,
+            "Nicaragua": 558, "Niger": 562, "Nigeria": 566, "North Korea": 408,
+            "North Macedonia": 807, "Norway": 578, "Oman": 512, "Pakistan": 586,
+            "Palau": 585, "Panama": 591, "Papua New Guinea": 598, "Paraguay": 600,
+            "Peru": 604, "Philippines": 608, "Poland": 616, "Portugal": 620,
+            "Qatar": 634, "Romania": 642, "Russia": 643, "Rwanda": 646,
+            "Saint Kitts and Nevis": 659, "Saint Lucia": 662,
+            "Saint Vincent and the Grenadines": 670, "Samoa": 882,
+            "San Marino": 674, "Sao Tome and Principe": 678, "Saudi Arabia": 682,
+            "Senegal": 686, "Serbia": 688, "Seychelles": 690, "Sierra Leone": 694,
+            "Singapore": 702, "Slovakia": 703, "Slovenia": 705,
+            "Solomon Islands": 90, "Somalia": 706, "South Africa": 710,
+            "South Korea": 410, "South Sudan": 728, "Spain": 724,
+            "Sri Lanka": 144, "Sudan": 729, "Suriname": 740, "Sweden": 752,
+            "Switzerland": 756, "Syria": 760, "Taiwan": 158, "Tajikistan": 762,
+            "Tanzania": 834, "Thailand": 764, "Timor-Leste": 626, "Togo": 768,
+            "Tonga": 776, "Trinidad and Tobago": 780, "Tunisia": 788,
+            "Turkey": 792, "Turkmenistan": 795, "Uganda": 800, "Ukraine": 804,
+            "United Arab Emirates": 784, "United Kingdom": 826,
+            "United States": 840, "Uruguay": 858, "Uzbekistan": 860,
+            "Vanuatu": 548, "Venezuela": 862, "Vietnam": 704, "Yemen": 887,
+            "Zambia": 894, "Zimbabwe": 716
+        };
+
+        // Load the CSV and build a lookup by ISO numeric code
+        d3.csv("/A9/world_choropleth/data/world-data-2023.csv").then(function(csvData) {
+
+            const dataByCode = {};
+
+            csvData.forEach(function(row) {
+                const lifeExpStr = row["Life expectancy"].trim();
+                if (!lifeExpStr) return;   
+
+                const code = isoByName[row.Country];
+                if (!code) return;         
+
+                dataByCode[code] = {
+                    country:    row.Country,
+                    lifeExp:    +lifeExpStr,
+                    infantMort: row["Infant mortality"].trim() || "N/A",
+                    population: row["Population"].trim()
+                        ? (+row["Population"].replace(/,/g, "")).toLocaleString()
+                        : "N/A"
+                };
+            });
+
+            // Load the world boundary shapes then draw
+            d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(function(world) {
+
+                const countries = topojson.feature(world, world.objects.countries).features;
+
+                // Draw one path per country
+                svg.append("g")
+                    .selectAll("path.country")
+                    .data(countries)
+                    .join("path")
+                    .attr("class", "country")
+                    .attr("d",     path)
+                    .attr("fill",  function(d) {
+                        const entry = dataByCode[+d.id];
+                        return entry ? colorScale(entry.lifeExp) : "#ddd";
+                    })
+                    .on("mouseover", function(event, d) {
+                        const entry = dataByCode[+d.id];
+                        if (!entry) {
+                            tooltip.style("opacity", 1)
+                                .html("No data available");
+                            return;
+                        }
+                        tooltip.style("opacity", 1)
+                            .html(
+                                "<strong>" + entry.country + "</strong><br/>" +
+                                "Life Expectancy: <strong>" + entry.lifeExp + " yrs</strong><br/>" +
+                                "Infant Mortality: " + entry.infantMort + " per 1,000<br/>" +
+                                "Population: " + entry.population
+                            );
+                    })
+                    .on("mousemove", function(event) {
+                        tooltip
+                            .style("left", (event.pageX + 12) + "px")
+                            .style("top",  (event.pageY - 28) + "px");
+                    })
+                    .on("mouseout", function() {
+                        tooltip.style("opacity", 0);
+                    });
+
+                // Country borders on top
+                svg.append("path")
+                    .datum(topojson.mesh(world, world.objects.countries, function(a, b) { return a !== b; }))
+                    .attr("fill",           "none")
+                    .attr("stroke",         "#fff")
+                    .attr("stroke-width",   0.4)
+                    .attr("d",              path)
+                    .attr("pointer-events", "none");
+
+                // Outer sphere border
+                svg.append("path")
+                    .datum({ type: "Sphere" })
+                    .attr("fill",         "none")
+                    .attr("stroke",       "#aad4e0")
+                    .attr("stroke-width", 1)
+                    .attr("d",            path)
+                    .attr("pointer-events", "none");
+
+                const legendW  = 320;
+                const legendId = "legend-gradient";
+
+                const legendSvg = d3.select("#legend")
+                    .append("svg")
+                    .attr("width",  legendW + 40)
+                    .attr("height", 60);
+
+                const defs = legendSvg.append("defs");
+                const grad = defs.append("linearGradient")
+                    .attr("id", legendId)
+                    .attr("x1", "0%").attr("x2", "100%");
+
+                d3.range(0, 1.01, 0.1).forEach(function(t) {
+                    grad.append("stop")
+                        .attr("offset",     (t * 100) + "%")
+                        .attr("stop-color", colorScale(50 + t * 36));
+                });
+
+                // Gradient bar
+                legendSvg.append("rect")
+                    .attr("x",      20)
+                    .attr("y",      8)
+                    .attr("width",  legendW)
+                    .attr("height", 12)
+                    .attr("rx",     4)
+                    .attr("fill",   "url(#" + legendId + ")");
+
+                // Tick labels
+                [50, 58, 66, 74, 86].forEach(function(val) {
+                    const lx = 20 + ((val - 50) / 36) * legendW;
+                    legendSvg.append("text")
+                        .attr("x",           lx)
+                        .attr("y",           34)
+                        .attr("text-anchor", "middle")
+                        .attr("font-family", "Georgia, serif")
+                        .attr("font-size",   "0.72rem")
+                        .attr("fill",        "#7b3a52")
+                        .text(val);
+                });
+
+                // No data swatch
+                legendSvg.append("rect")
+                    .attr("x",      20)
+                    .attr("y",      44)
+                    .attr("width",  14)
+                    .attr("height", 14)
+                    .attr("rx",     2)
+                    .attr("fill",   "#ddd");
+
+                legendSvg.append("text")
+                    .attr("x",           40)
+                    .attr("y",           55)
+                    .attr("font-family", "Georgia, serif")
+                    .attr("font-size",   "0.72rem")
+                    .attr("fill",        "#7b3a52")
+                    .text("No data");
+
+            });
+        });
+    </script>
+
+    <hr>
+    <a href="/index.html">Go back to homepage</a>
+
+</body>
+</html>

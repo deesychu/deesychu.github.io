@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Proportional Symbols Map – Cost of Living by State</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+
+    <style>
+        body {
+            font-family: Georgia, serif;
+            background-color: #fff0f5;
+            color: #5a2a3a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            font-size: 1.6rem;
+            margin-bottom: 8px;
+            color: #c2185b;
+        }
+
+        p.subtitle {
+            font-size: 0.95rem;
+            color: #a0566b;
+            margin-bottom: 20px;
+            text-align: center;
+            max-width: 760px;
+        }
+
+        #map {
+            width: 860px;
+            height: 520px;
+            border: 1.5px solid #f8bbd0;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(194, 24, 91, 0.08);
+        }
+
+        .d3-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            overflow: visible;
+        }
+
+        circle {
+            pointer-events: all;
+            cursor: pointer;
+        }
+
+        #legend {
+            background: #fff;
+            border: 1.5px solid #f8bbd0;
+            border-radius: 10px;
+            padding: 14px 20px;
+            margin-top: 16px;
+            display: flex;
+            gap: 40px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+            font-size: 0.83rem;
+            color: #5a2a3a;
+            box-shadow: 0 4px 12px rgba(194, 24, 91, 0.06);
+        }
+
+        .legend-section-title {
+            font-size: 0.78rem;
+            color: #a0566b;
+            margin-bottom: 6px;
+            font-style: italic;
+        }
+
+        .legend-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 5px;
+        }
+
+        #tooltip {
+            position: absolute;
+            pointer-events: none;
+            background: #fff;
+            border: 1.5px solid #f8bbd0;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-family: Georgia, serif;
+            font-size: 0.8rem;
+            color: #5a2a3a;
+            box-shadow: 0 4px 12px rgba(194, 24, 91, 0.1);
+            display: none;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Cost of Living Index by U.S. State (2023)</h1>
+    <p class="subtitle">
+        Proportional symbols (specifically a bubble map) — circle size and color both show the Cost of Living Index. Hover over any circle to see detailed cost breakdown.
+    </p>
+
+    <div id="map"></div>
+    <div id="tooltip"></div>
+
+    <div id="legend">
+
+        <!-- Size legend -->
+        <div>
+            <div class="legend-section-title">Circle size = Cost of Living Index</div>
+            <div style="display:flex; align-items:flex-end; gap:14px;">
+                <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+                    <svg width="20" height="20"><circle cx="10" cy="10" r="5" fill="#b3cde3" stroke="#7b9fbf" stroke-width="1"/></svg>
+                    <span>~87</span>
+                </div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+                    <svg width="30" height="30"><circle cx="15" cy="15" r="9" fill="#b3cde3" stroke="#7b9fbf" stroke-width="1"/></svg>
+                    <span>~110</span>
+                </div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+                    <svg width="46" height="46"><circle cx="23" cy="23" r="16" fill="#b3cde3" stroke="#7b9fbf" stroke-width="1"/></svg>
+                    <span>~193</span>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <div class="legend-section-title">Circle color = Cost rank</div>
+            <div class="legend-row">
+                <svg width="16" height="16"><circle cx="8" cy="8" r="7" fill="#c2185b" stroke="#8b0032" stroke-width="1"/></svg>
+                <span>Top 10 most expensive states</span>
+            </div>
+            <div class="legend-row">
+                <svg width="16" height="16"><circle cx="8" cy="8" r="7" fill="#b3cde3" stroke="#7b9fbf" stroke-width="1"/></svg>
+                <span>All other states</span>
+            </div>
+        </div>
+
+    </div>
+
+    <!--
+        References:
+        - Leaflet + D3 overlay: https://bost.ocks.org/mike/leaflet/
+        - Proportional symbols: https://observablehq.com/@d3/bubble-map
+    -->
+
+    <script>
+        const map = L.map("map").setView([38, -97], 4);
+
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            attribution: "© OpenStreetMap contributors",
+            opacity: 0.5
+        }).addTo(map);
+
+        // D3 SVG overlay on top of Leaflet
+        const svg = d3.select(map.getPanes().overlayPane)
+            .append("svg")
+            .attr("class", "d3-overlay");
+
+        const g = svg.append("g").attr("class", "leaflet-zoom-hide");
+
+        const tooltip = document.getElementById("tooltip");
+
+        const radiusScale = d3.scaleSqrt()
+            .domain([80, 200])
+            .range([6, 32]);
+
+        // Load both CSV files using nested .then()
+        d3.csv("/A9/proportional_symbols/data/state.csv").then(function(stateData) {
+
+            // Build lookup: state name - { lat, lng }
+            const coordsByState = {};
+            stateData.forEach(function(row) {
+                coordsByState[row.state] = { lat: +row.lat, lng: +row.lng };
+            });
+
+            // Load expensive states data
+            d3.csv("/A9/proportional_symbols/data/expensive-states.csv").then(function(costData) {
+
+                // Join cost data with lat/lng from state lookup
+                const combined = costData.map(function(row) {
+                    const coords = coordsByState[row.State] || { lat: 0, lng: 0 };
+                    return {
+                        state:          row.State,
+                        costRank:       +row.costRank,
+                        costIndex:      +row.costIndex,
+                        groceryCost:    +row.groceryCost,
+                        housingCost:    +row.housingCost,
+                        utilitiesCost:  +row.utilitiesCost,
+                        transportCost:  +row.transportationCost,
+                        miscCost:       +row.miscCost,
+                        lat:            coords.lat,
+                        lng:            coords.lng,
+                        isTop10:        +row.costRank <= 10   // true for top 10 most expensive
+                    };
+                });
+
+                // Sort so top10 circles draw last (on top)
+                combined.sort(function(a, b) { return b.isTop10 - a.isTop10; });
+
+                // Draw one circle per state
+                const circles = g.selectAll("circle")
+                    .data(combined)
+                    .join("circle")
+                    .attr("r",            function(d) { return radiusScale(d.costIndex); })
+                    .attr("fill",         function(d) { return d.isTop10 ? "#c2185b" : "#b3cde3"; })
+                    .attr("fill-opacity", 0.7)
+                    .attr("stroke",       function(d) { return d.isTop10 ? "#8b0032" : "#7b9fbf"; })
+                    .attr("stroke-width", 1.5)
+                    // Tooltip on hover
+                    .on("mouseover", function(event, d) {
+                        d3.select(this).attr("fill-opacity", 1);
+                        tooltip.style.display = "block";
+                        tooltip.innerHTML =
+                            "<strong>" + d.state + "</strong>" +
+                            " (Rank #" + d.costRank + ")<br/>" +
+                            "Cost Index: <strong>" + d.costIndex + "</strong><br/>" +
+                            "Housing: " + d.housingCost + "<br/>" +
+                            "Grocery: " + d.groceryCost + "<br/>" +
+                            "Utilities: " + d.utilitiesCost + "<br/>" +
+                            "Transport: " + d.transportCost;
+                    })
+                    .on("mousemove", function(event) {
+                        tooltip.style.left  = (event.pageX + 12) + "px";
+                        tooltip.style.top   = (event.pageY - 28) + "px";
+                    })
+                    .on("mouseout", function(event, d) {
+                        d3.select(this).attr("fill-opacity", 0.7);
+                        tooltip.style.display = "none";
+                    });
+
+                // Reposition circles whenever the map moves or zooms
+                function update() {
+                    const tl = map.latLngToLayerPoint(map.getBounds().getNorthWest());
+                    const br = map.latLngToLayerPoint(map.getBounds().getSouthEast());
+                    svg.style("left",   tl.x + "px")
+                        .style("top",    tl.y + "px")
+                        .attr("width",   br.x - tl.x)
+                        .attr("height",  br.y - tl.y);
+                    g.attr("transform", "translate(" + (-tl.x) + "," + (-tl.y) + ")");
+
+                    // Move each circle to its correct lat/lng pixel position
+                    circles
+                        .attr("cx", function(d) {
+                            return map.latLngToLayerPoint([d.lat, d.lng]).x;
+                        })
+                        .attr("cy", function(d) {
+                            return map.latLngToLayerPoint([d.lat, d.lng]).y;
+                        });
+                }
+
+                update();
+                map.on("moveend", update);
+                map.on("zoomend", update);
+
+            });
+        });
+    </script>
+
+    <hr>
+    <a href="/index.html">Go back to homepage</a>
+
+</body>
+</html>

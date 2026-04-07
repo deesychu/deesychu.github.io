@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Choropleth Map – 2023 County Unemployment</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+
+    <style>
+        body {
+            font-family: Georgia, serif;
+            background-color: #fff0f5;
+            color: #5a2a3a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            font-size: 1.6rem;
+            margin-bottom: 8px;
+            color: #c2185b;
+        }
+
+        p.subtitle {
+            font-size: 0.95rem;
+            color: #a0566b;
+            margin-bottom: 32px;
+            text-align: center;
+            max-width: 700px;
+        }
+
+        #chart {
+            background: #fff;
+            border: 1.5px solid #f8bbd0;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 16px rgba(194, 24, 91, 0.08);
+        }
+
+        .county {
+            stroke: #fff;
+            stroke-width: 0.3px;
+            cursor: pointer;
+        }
+
+        .county:hover {
+            opacity: 0.75;
+            stroke: #c2185b;
+            stroke-width: 1px;
+        }
+
+        .state-border {
+            fill: none;
+            stroke: #fff;
+            stroke-width: 1px;
+            pointer-events: none;
+        }
+
+        #tooltip {
+            position: absolute;
+            pointer-events: none;
+            background: #fff;
+            border: 1.5px solid #f8bbd0;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-family: Georgia, serif;
+            font-size: 0.8rem;
+            color: #5a2a3a;
+            box-shadow: 0 4px 12px rgba(194, 24, 91, 0.1);
+            opacity: 0;
+        }
+
+        .legend-label {
+            font-family: Georgia, serif;
+            font-size: 0.72rem;
+            fill: #7b3a52;
+        }
+
+        .legend-title {
+            font-family: Georgia, serif;
+            font-size: 0.82rem;
+            fill: #a0566b;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>U.S. County Unemployment Rate (2023)</h1>
+    <p class="subtitle">
+        Choropleth map showing the unemployment rate for every U.S. county in 2023. Hover over any county to see its name and unemployment rate.
+    </p>
+
+    <div id="chart"></div>
+    <div id="tooltip"></div>
+
+    <!--
+        References:
+        - D3 Choropleth: https://observablehq.com/@d3/choropleth
+        - Data: USDA ERS County-Level Data Sets (Unemployment2023.csv)
+    -->
+
+    <script>
+        const width  = 960;
+        const height = 650;
+
+        const tooltip = d3.select("#tooltip");
+
+        // Color scale
+        const colorScale = d3.scaleSequential()
+            .domain([0, 18])
+            .interpolator(d3.interpolateRdPu);
+
+        // Set up the SVG
+        const svg = d3.create("svg")
+            .attr("width",   width)
+            .attr("height",  height)
+            .attr("viewBox", [0, 0, width, height])
+            .attr("style",   "max-width: 100%; height: auto;");
+
+        document.getElementById("chart").appendChild(svg.node());
+
+        // geoPath turns GeoJSON coordinates into SVG path strings
+        const path = d3.geoPath();
+
+        // Load the CSV first, build the lookup table
+        d3.csv("/A9/county_choropleth/data/Unemployment2023.csv").then(function(csvData) {
+
+            // Build a lookup: FIPS code: { rate, county name, state }
+            const dataByFips = {};
+            csvData.forEach(function(row) {
+                if (row.Attribute === "Unemployment_rate_2023" && row.Value) {
+                    const fips = row.FIPS_Code.padStart(5, "0");
+                    dataByFips[fips] = {
+                        rate:  +row.Value,
+                        name:  row.Area_Name,
+                        state: row.State
+                    };
+                }
+            });
+
+            // Load the county boundary shapes, then draw the map
+            d3.json("https://cdn.jsdelivr.net/npm/us-atlas@3/counties-albers-10m.json").then(function(us) {
+
+                // Draw county shapes — one <path> per county
+                svg.append("g")
+                    .selectAll("path")
+                    .data(topojson.feature(us, us.objects.counties).features)
+                    .join("path")
+                    .attr("class", "county")
+                    .attr("d",    path)
+                    .attr("fill", function(d) {
+                        const entry = dataByFips[d.id];
+                        return entry ? colorScale(entry.rate) : "#eee";
+                    })
+                    .on("mouseover", function(event, d) {
+                        const entry = dataByFips[d.id];
+                        tooltip
+                            .style("opacity", 1)
+                            .html(
+                                "<strong>" + (entry ? entry.name : "Unknown") + "</strong><br/>" +
+                                "Unemployment Rate: " + (entry ? entry.rate + "%" : "No data")
+                            );
+                    })
+                    .on("mousemove", function(event) {
+                        tooltip
+                            .style("left", (event.pageX + 12) + "px")
+                            .style("top",  (event.pageY - 28) + "px");
+                    })
+                    .on("mouseout", function() {
+                        tooltip.style("opacity", 0);
+                    });
+
+                // Draw state borders on top of counties
+                svg.append("path")
+                    .datum(topojson.mesh(us, us.objects.states, function(a, b) { return a !== b; }))
+                    .attr("class", "state-border")
+                    .attr("d",     path);
+
+                // Color legend
+                const legendW = 260;
+                const legendH = 20;
+                const legendX = width - legendW - 100;
+                const legendY = height - 40;
+
+                // Linear gradient for the legend bar
+                const defs = svg.append("defs");
+                const grad = defs.append("linearGradient")
+                    .attr("id", "legend-gradient")
+                    .attr("x1", "0%").attr("x2", "100%");
+
+                // Add color stops across the full domain
+                d3.range(0, 1.01, 0.1).forEach(function(t) {
+                    grad.append("stop")
+                        .attr("offset",     (t * 100) + "%")
+                        .attr("stop-color", colorScale(t * 18));
+                });
+
+                // Gradient rectangle
+                svg.append("rect")
+                    .attr("x",      legendX)
+                    .attr("y",      legendY)
+                    .attr("width",  legendW)
+                    .attr("height", legendH)
+                    .attr("rx",     4)
+                    .attr("fill",   "url(#legend-gradient)");
+
+                // Legend title
+                svg.append("text")
+                    .attr("class", "legend-title")
+                    .attr("x",     legendX)
+                    .attr("y",     legendY - 8)
+                    .text("Unemployment Rate (%)");
+
+                // Tick labels at 0%, 6%, 12%, 18%
+                [0, 6, 12, 18].forEach(function(val) {
+                    const lx = legendX + (val / 18) * legendW;
+                    svg.append("text")
+                        .attr("class",       "legend-label")
+                        .attr("x",           lx)
+                        .attr("y",           legendY + legendH + 14)
+                        .attr("text-anchor", "middle")
+                        .text(val + "%");
+                });
+
+            });
+        });
+    </script>
+
+    <hr>
+    <a href="/index.html">Go back to homepage</a>
+
+</body>
+</html>
