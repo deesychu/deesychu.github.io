@@ -1,0 +1,13 @@
+country,gdp_per_capita,happiness_score,region
+Luxembourg,1.80,7.9,Europe
+Switzerland,1.75,7.8,Europe
+United States,1.65,7.4,Europe-influenced
+Norway,1.60,7.7,Europe
+Canada,1.55,7.5,Europe-influenced
+Germany,1.45,7.1,Europe
+Japan,1.30,6.8,Asia
+South Korea,1.10,6.2,Asia
+Brazil,0.90,5.8,South America
+India,0.65,5.1,Asia
+Nigeria,0.55,4.8,Africa
+Ethiopia,0.25,4.1,Africa

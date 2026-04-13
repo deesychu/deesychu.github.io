@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>World Happiness – Deceptive vs Ethical (Real Data)</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+
+    <style>
+        body {
+            font-family: Georgia, serif;
+            background-color: #fff0f5;
+            color: #5a2a3a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            font-size: 1.6rem;
+            margin-bottom: 8px;
+            color: #c2185b;
+            text-align: center;
+        }
+
+        p.subtitle {
+            font-size: 0.95rem;
+            color: #a0566b;
+            margin-bottom: 32px;
+            text-align: center;
+            max-width: 900px;
+            line-height: 1.6;
+        }
+
+        .charts-wrapper {
+            display: flex;
+            gap: 28px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .chart-block {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            max-width: 520px;
+        }
+
+        .chart-title {
+            font-size: 1rem;
+            font-weight: bold;
+            color: #5a2a3a;
+            text-align: center;
+            margin-bottom: 6px;
+        }
+
+        .chart-container {
+            background: #fff;
+            border: 1.5px solid #f8bbd0;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(194, 24, 91, 0.08);
+            padding: 20px 28px 12px 28px;
+        }
+
+        .legend-box {
+            border: 1.5px solid #f8bbd0;
+            border-radius: 10px;
+            padding: 10px 16px;
+            margin-top: 12px;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+            font-size: 0.78rem;
+            color: #5a2a3a;
+            box-shadow: 0 2px 8px rgba(194, 24, 91, 0.05);
+            background: #fff;
+        }
+
+        .legend-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .axis path, .axis line { stroke: #f8bbd0; }
+        .axis text {
+            font-family: Georgia, serif;
+            font-size: 0.72rem;
+            fill: #a0566b;
+        }
+
+        .gridline {
+            stroke: #fce4ec;
+            stroke-dasharray: 3, 3;
+            stroke-width: 1;
+        }
+
+        .note-box {
+            margin-top: 16px;
+            max-width: 460px;
+            border-radius: 10px;
+            padding: 11px 15px;
+            font-size: 0.78rem;
+            line-height: 1.6;
+            text-align: left;
+        }
+
+        .note-box.deceptive {
+            background: #fff8e1;
+            border: 1.5px solid #ffe082;
+            color: #5a3e00;
+        }
+
+        .note-box.ethical {
+            background: #e8f5e9;
+            border: 1.5px solid #a5d6a7;
+            color: #1b5e20;
+        }
+
+        .note-box strong { display: block; margin-bottom: 4px; }
+
+        .analysis-section {
+            margin-top: 48px;
+            max-width: 900px;
+            width: 100%;
+        }
+
+        .analysis-section h2 {
+            font-size: 1.2rem;
+            color: #c2185b;
+            margin-bottom: 12px;
+            border-bottom: 1.5px solid #f8bbd0;
+            padding-bottom: 8px;
+        }
+
+        .analysis-section p {
+            font-size: 0.88rem;
+            color: #5a2a3a;
+            line-height: 1.8;
+            margin-bottom: 14px;
+        }
+
+        .technique-label {
+            font-weight: bold;
+            color: #c2185b;
+        }
+
+        #tooltip {
+            position: fixed;
+            pointer-events: none;
+            background: #fff;
+            border: 1.5px solid #f8bbd0;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-family: Georgia, serif;
+            font-size: 0.78rem;
+            color: #5a2a3a;
+            box-shadow: 0 4px 12px rgba(194, 24, 91, 0.1);
+            display: none;
+            z-index: 1000;
+            line-height: 1.7;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>World Happiness & Wealth — Deceptive vs. Ethical Charts w/ Real Data</h1>
+    <p class="subtitle">
+        Both charts use the same real-world dataset (World Happiness Report 2019).
+        The deceptive version uses four manipulation techniques to push a false conclusion.
+        The ethical version presents the complete picture so the reader can judge for themselves.
+    </p>
+
+    <div class="charts-wrapper">
+
+        <!-- DECEPTIVE -->
+        <div class="chart-block">
+            <div class="chart-title">Deceptive Chart: Wealthier Nations Are Proven to Be Happier</div>
+            <div class="chart-container">
+                <svg id="chart-deceptive"></svg>
+            </div>
+            <div class="legend-box">
+                <div class="legend-row">
+                    <svg width="14" height="14"><circle cx="7" cy="7" r="5" fill="#2c6fad" stroke="white" stroke-width="1.5"/></svg>
+                    <span>Europe</span>
+                </div>
+                <div class="legend-row">
+                    <svg width="14" height="14"><circle cx="7" cy="7" r="5" fill="#5ba4e0" stroke="white" stroke-width="1.5"/></svg>
+                    <span>North America</span>
+                </div>
+                <div class="legend-row">
+                    <svg width="14" height="14"><circle cx="7" cy="7" r="5" fill="#e0b939" stroke="white" stroke-width="1.5"/></svg>
+                    <span>Latin America</span>
+                </div>
+                <div class="legend-row">
+                    <svg width="14" height="14"><circle cx="7" cy="7" r="5" fill="#e07b39" stroke="white" stroke-width="1.5"/></svg>
+                    <span>Asia</span>
+                </div>
+                <div class="legend-row">
+                    <svg width="14" height="14"><circle cx="7" cy="7" r="5" fill="#888888" stroke="white" stroke-width="1.5"/></svg>
+                    <span>Africa</span>
+                </div>
+            </div>
+            <div class="note-box deceptive">
+                <strong>Deceptive techniques used:</strong>
+                1. Y-axis starts at 2, not 0 — compresses the scale making score gaps look larger than they are.<br/>
+                2. Title states "Proven to Be Happier" — a causal conclusion the data cannot support.<br/>
+                3. Sorting by GDP implies a clean downward trend but the line is actually jagged and irregular.<br/>
+                4. Costa Rica (low GDP, high happiness) is hidden in the visual noise of the busy line.
+            </div>
+        </div>
+
+        <!-- ETHICAL -->
+        <div class="chart-block">
+            <div class="chart-title">Ethical Chart: Happiness and Wealth Are Related But Messy</div>
+            <div class="chart-container">
+                <svg id="chart-ethical"></svg>
+            </div>
+            <div class="legend-box">
+                <div class="legend-row">
+                    <svg width="14" height="14"><circle cx="7" cy="7" r="5" fill="#2c6fad" stroke="#1a4a7a" stroke-width="1.5"/></svg>
+                    <span>Europe</span>
+                </div>
+                <div class="legend-row">
+                    <svg width="14" height="14"><circle cx="7" cy="7" r="5" fill="#5ba4e0" stroke="#2c6fad" stroke-width="1.5"/></svg>
+                    <span>North America</span>
+                </div>
+                <div class="legend-row">
+                    <svg width="14" height="14"><circle cx="7" cy="7" r="5" fill="#e0b939" stroke="#b89a1a" stroke-width="1.5"/></svg>
+                    <span>Latin America</span>
+                </div>
+                <div class="legend-row">
+                    <svg width="14" height="14"><circle cx="7" cy="7" r="5" fill="#e07b39" stroke="#b85a1a" stroke-width="1.5"/></svg>
+                    <span>Asia</span>
+                </div>
+                <div class="legend-row">
+                    <svg width="14" height="14"><circle cx="7" cy="7" r="5" fill="#888888" stroke="#555555" stroke-width="1.5"/></svg>
+                    <span>Africa</span>
+                </div>
+            </div>
+            <div class="note-box ethical">
+                <strong>Why this chart is ethical:</strong>
+                Y-axis starts at 0 for honest proportions. All 15 countries are shown including
+                outliers like Costa Rica (happy but poor) and Luxembourg (richest but not #1).
+                Countries are sorted by GDP so the reader can see where the pattern breaks down.
+                Region colors reveal that factors beyond wealth shape happiness.
+            </div>
+        </div>
+
+    </div>
+
+    <!-- MANIPULATION ANALYSIS -->
+    <div class="analysis-section">
+        <h2>Manipulation Analysis</h2>
+        <p>
+            <span class="technique-label">Technique 1 — Truncated Y-axis:</span>
+            The deceptive chart's Y-axis begins at 2 rather than 0. While this is less extreme than
+            starting at 5.5, it still meaningfully distorts the visual. The gap between Costa Rica
+            at 7.167 and South Sudan at 2.853 appears to span almost the entire chart height, making
+            a 4.3-point difference look catastrophic rather than proportional. On a true 0–10 scale,
+            that same gap would occupy less than half the chart area and read far less dramatically.
+        </p>
+        <p>
+            <span class="technique-label">Technique 2 — Misleading title:</span>
+            The title "Wealthier Nations Are Proven to Be Happier" states a causal conclusion the
+            data cannot support. The dataset measures correlation between GDP and happiness, not
+            causation. Research consistently shows that readers form their primary interpretation
+            from chart titles before examining the data itself, so this primes the reader to
+            confirm what they have already been told before they have looked at a single data point.
+        </p>
+        <p>
+            <span class="technique-label">Technique 3 — Misleading implied trend:</span>
+            Sorting countries by GDP and connecting them with a line implies a clean, consistent
+            downward relationship between wealth and happiness. But the actual line is jagged and
+            irregular — Finland ranks #1 in happiness despite having a lower GDP than Luxembourg,
+            Norway, or Switzerland. The connecting line visually suggests a trend that the data
+            does not actually support when examined country by country.
+        </p>
+        <p>
+            <span class="technique-label">Technique 4 — Outlier buried in visual noise:</span>
+            Costa Rica — the single most damaging outlier for the "richer = happier" narrative —
+            is present in the chart but visually buried. Its dot sits mid-chart between Mexico and
+            China, where the line drops sharply, making it easy to overlook. No annotation draws
+            attention to the fact that Costa Rica achieves a 7.167 happiness score on a GDP of
+            just 1.034, outperforming the United States, France, and every other country with
+            a higher GDP in the dataset.
+        </p>
+        <p>
+            <span class="technique-label">Deceptive vs. Ethical:</span>
+            Both charts use all 15 countries sorted by GDP, but they communicate completely
+            different stories. The deceptive chart's truncated Y-axis and misleading title push
+            the reader toward a simple wealth-drives-happiness conclusion. The ethical chart's
+            full 0–10 scale immediately shows that the score differences are less extreme than
+            they appeared, and the Costa Rica annotation explicitly flags the key outlier that
+            undermines the narrative. A reader of the deceptive chart would feel confident that
+            GDP predicts happiness; a reader of the ethical chart would correctly understand
+            that the relationship is real but far messier than the headline suggests.
+        </p>
+    </div>
+
+    <div id="tooltip"></div>
+
+    <script>
+        const regionColors = {
+            "Europe":        "#2c6fad",
+            "North America": "#5ba4e0",
+            "Latin America": "#e0b939",
+            "Asia":          "#e07b39",
+            "Africa":        "#888888"
+        };
+
+        const tooltip = document.getElementById("tooltip");
+        function showTip(e, html) { tooltip.style.display = "block"; tooltip.innerHTML = html; }
+        function moveTip(e) { tooltip.style.left = (e.clientX + 14) + "px"; tooltip.style.top = (e.clientY - 38) + "px"; }
+        function hideTip() { tooltip.style.display = "none"; }
+
+        // Load CSV — strip # comment lines then parse
+        d3.text("/A10/real_data/data/real_happiness_data.csv").then(rawText => {
+            const cleaned = rawText
+                .split("\n")
+                .filter(line => !line.trim().startsWith("#"))
+                .join("\n");
+
+            const fullData = d3.csvParse(cleaned, d => {
+                const score = parseFloat(d.score);
+                if (isNaN(score)) return null;
+                return {
+                    country: d.country,
+                    score:   score,
+                    gdp:     +d.gdp_per_capita,
+                    region:  d.region,
+                    rank:    +d.overall_rank
+                };
+            }).filter(d => d !== null);
+
+            // Deceptive — all 15 sorted by GDP descending, Y axis truncated at 2
+            const cherryData = [...fullData].sort((a, b) => b.gdp - a.gdp);
+
+            // Ethical — all 15 sorted by GDP descending (same order, honest scale)
+            const ethicalData = [...fullData].sort((a, b) => b.gdp - a.gdp);
+
+            buildDeceptive(cherryData);
+            buildEthical(ethicalData);
+        });
+
+        // ════════════════════════════════════════
+        //  DECEPTIVE CHART — line chart
+        //  Matches uploaded AI chart exactly:
+        //  all 15 countries, GDP sorted, Y starts at 2, region colored dots
+        // ════════════════════════════════════════
+        function buildDeceptive(data) {
+            const margin = { top: 16, right: 20, bottom: 70, left: 58 };
+            const W = 440 - margin.left - margin.right;
+            const H = 320 - margin.top  - margin.bottom;
+
+            const svg = d3.select("#chart-deceptive")
+                .attr("width",  W + margin.left + margin.right)
+                .attr("height", H + margin.top  + margin.bottom);
+            const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+            const xScale = d3.scalePoint().domain(data.map(d => d.country)).range([0, W]).padding(0.3);
+            // DECEPTION #1: Y truncated — starts at 2 not 0, matching AI chart
+            const yScale = d3.scaleLinear().domain([2, 8.5]).range([H, 0]);
+
+            g.selectAll(".gridline").data(yScale.ticks(5)).join("line")
+                .attr("class", "gridline")
+                .attr("x1", 0).attr("x2", W)
+                .attr("y1", d => yScale(d)).attr("y2", d => yScale(d));
+
+            // dark navy connecting line matching AI chart
+            g.append("path")
+                .datum(data)
+                .attr("fill", "none")
+                .attr("stroke", "#2c6fad").attr("stroke-width", 2).attr("opacity", 0.85)
+                .attr("d", d3.line()
+                    .x(d => xScale(d.country))
+                    .y(d => yScale(d.score)));
+
+            g.append("g").attr("class", "axis").attr("transform", `translate(0,${H})`)
+                .call(d3.axisBottom(xScale))
+                .selectAll("text")
+                .attr("transform", "rotate(-38)")
+                .attr("text-anchor", "end")
+                .attr("dx", "-0.4em").attr("dy", "0.6em");
+
+            g.append("g").attr("class", "axis")
+                .call(d3.axisLeft(yScale).ticks(7).tickFormat(d => d.toFixed(1)));
+
+            g.append("text").attr("x", W / 2).attr("y", H + 66)
+                .attr("text-anchor", "middle").attr("font-family", "Georgia,serif")
+                .attr("font-size", "0.8rem").attr("fill", "#5a2a3a")
+                .text("Countries Ranked by GDP (Highest → Lowest)");
+
+            g.append("text").attr("transform", "rotate(-90)").attr("x", -H / 2).attr("y", -44)
+                .attr("text-anchor", "middle").attr("font-family", "Georgia,serif")
+                .attr("font-size", "0.8rem").attr("fill", "#5a2a3a")
+                .text("Happiness Score (0–10)");
+
+            // region-colored dots matching AI chart
+            g.selectAll(".dot").data(data).join("circle")
+                .attr("cx", d => xScale(d.country))
+                .attr("cy", d => yScale(d.score))
+                .attr("r", 7)
+                .attr("fill", d => regionColors[d.region] || "#888")
+                .attr("stroke", "white").attr("stroke-width", 1.5)
+                .style("cursor", "pointer")
+                .on("mouseover", function(e, d) {
+                    d3.select(this).attr("r", 10);
+                    showTip(e, `<strong>${d.country}</strong><br/>
+                                Happiness: <strong>${d.score.toFixed(3)}</strong><br/>
+                                GDP: <strong>${d.gdp.toFixed(3)}</strong><br/>
+                                Region: <strong>${d.region}</strong>`);
+                })
+                .on("mousemove", moveTip)
+                .on("mouseout", function() { d3.select(this).attr("r", 7); hideTip(); });
+        }
+
+        // ════════════════════════════════════════
+        //  ETHICAL CHART — line chart
+        // ════════════════════════════════════════
+        function buildEthical(data) {
+            const margin = { top: 16, right: 20, bottom: 70, left: 58 };
+            const W = 440 - margin.left - margin.right;
+            const H = 320 - margin.top  - margin.bottom;
+
+            const svg = d3.select("#chart-ethical")
+                .attr("width",  W + margin.left + margin.right)
+                .attr("height", H + margin.top  + margin.bottom);
+            const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+            const xScale = d3.scalePoint().domain(data.map(d => d.country)).range([0, W]).padding(0.3);
+            // Y starts at 0 — full honest scale
+            const yScale = d3.scaleLinear().domain([0, 9]).range([H, 0]);
+
+            g.selectAll(".gridline").data(yScale.ticks(5)).join("line")
+                .attr("class", "gridline")
+                .attr("x1", 0).attr("x2", W)
+                .attr("y1", d => yScale(d)).attr("y2", d => yScale(d));
+
+            // connecting line
+            g.append("path")
+                .datum(data)
+                .attr("fill", "none")
+                .attr("stroke", "#f8bbd0").attr("stroke-width", 1.5).attr("opacity", 0.8)
+                .attr("d", d3.line()
+                    .x(d => xScale(d.country))
+                    .y(d => yScale(d.score)));
+
+            g.append("g").attr("class", "axis").attr("transform", `translate(0,${H})`)
+                .call(d3.axisBottom(xScale))
+                .selectAll("text")
+                .attr("transform", "rotate(-38)")
+                .attr("text-anchor", "end")
+                .attr("dx", "-0.4em").attr("dy", "0.6em");
+
+            g.append("g").attr("class", "axis")
+                .call(d3.axisLeft(yScale).ticks(5).tickFormat(d => d.toFixed(1)));
+
+            g.append("text").attr("x", W / 2).attr("y", H + 66)
+                .attr("text-anchor", "middle").attr("font-family", "Georgia,serif")
+                .attr("font-size", "0.8rem").attr("fill", "#5a2a3a")
+                .text("Country (sorted by GDP, highest → lowest)");
+
+            g.append("text").attr("transform", "rotate(-90)").attr("x", -H / 2).attr("y", -44)
+                .attr("text-anchor", "middle").attr("font-family", "Georgia,serif")
+                .attr("font-size", "0.8rem").attr("fill", "#5a2a3a")
+                .text("Happiness Score (0–10)");
+
+            // All 15 dots colored by region
+            g.selectAll(".dot").data(data).join("circle")
+                .attr("cx", d => xScale(d.country))
+                .attr("cy", d => yScale(d.score))
+                .attr("r", 7)
+                .attr("fill", d => regionColors[d.region] || "#888")
+                .attr("stroke", "#fff").attr("stroke-width", 1.5)
+                .style("cursor", "pointer")
+                .on("mouseover", function(e, d) {
+                    d3.select(this).attr("r", 10);
+                    showTip(e, `<strong>${d.country}</strong><br/>
+                                Happiness: <strong>${d.score.toFixed(3)}</strong><br/>
+                                GDP: <strong>${d.gdp.toFixed(3)}</strong><br/>
+                                Region: <strong>${d.region}</strong><br/>
+                                Global Rank: <strong>#${d.rank}</strong>`);
+                })
+                .on("mousemove", moveTip)
+                .on("mouseout", function() { d3.select(this).attr("r", 7); hideTip(); });
+
+            // Annotate Costa Rica as the key outlier
+            const cr = data.find(d => d.country === "Costa Rica");
+            if (cr) {
+                g.append("line")
+                    .attr("x1", xScale(cr.country)).attr("x2", xScale(cr.country))
+                    .attr("y1", yScale(cr.score) - 12).attr("y2", yScale(cr.score) - 32)
+                    .attr("stroke", "#a0566b").attr("stroke-width", 1).attr("stroke-dasharray", "3,2");
+                g.append("text")
+                    .attr("x", xScale(cr.country)).attr("y", yScale(cr.score) - 36)
+                    .attr("text-anchor", "middle")
+                    .attr("font-family", "Georgia,serif").attr("font-size", "0.65rem").attr("fill", "#a0566b")
+                    .text("Outlier: low GDP, high happiness");
+            }
+        }
+    </script>
+
+    <hr>
+    <a href="/index.html">Go back to homepage</a>
+
+</body>
+</html>
